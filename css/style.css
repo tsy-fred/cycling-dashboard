@@ -93,6 +93,8 @@ tbody tr.act{background:#edf0f7}
 .rl .t .d{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 .rl .t .c{font-weight:600;color:#222}
 .route-label{background:#222!important;color:#fff!important;font-size:10px!important;padding:2px 6px!important;border:none!important;border-radius:4px!important;box-shadow:0 1px 3px rgba(0,0,0,.2)!important;font-weight:500}
+.lap-edit{cursor:pointer;display:inline-flex;align-items:center;gap:2px;padding:1px 7px;background:#edf0f7;border-radius:5px;font-weight:600;color:#333;transition:all .12s;font-size:inherit;border:1px solid #dde0e6}
+.lap-edit:hover{background:#222;color:#fff;border-color:#222}
 
 /* ── 地标大头钉 ── */
 .loc-pin{background:none!important;border:none!important}
