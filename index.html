@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>骑行记录看板</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <h1>🚴 骑行记录</h1>
+      <div class="top-actions">
+        <a class="sync-btn" href="/export-md" download="骑行记录.md" id="exportMdBtn">📥 导出 .md</a>
+        <button class="sync-btn" id="settingsBtn">⚙️</button>
+        <input type="file" accept=".fit" id="fitFileInput" hidden>
+      </div>
+    </div>
+
+    <!-- 上传区域（点击也可上传） -->
+    <div class="drop-zone" id="dropZone">
+      <div class="drop-hint">点击或拖拽 .fit 文件到此处上传</div>
+      <div class="drop-status" id="dropStatus"></div>
+    </div>
+
+    <!-- 统计概览 -->
+    <div class="sv" id="stats"></div>
+
+    <!-- 地图 -->
+    <div class="map-box">
+      <div id="map"></div>
+      <div class="leg" id="legend"></div>
+    </div>
+
+    <div class="gr">
+      <!-- 骑行列表 -->
+      <div class="cd">
+        <div class="hd"><span class="ic">📋</span> 骑行列表</div>
+        <table>
+          <thead>
+            <tr id="rtable">
+              <th data-sort="date" onclick="window.toggleSort('date')">日期 <span class="sort-arrow"></span></th>
+              <th data-sort="route" onclick="window.toggleSort('route')">路线 <span class="sort-arrow"></span></th>
+              <th data-sort="dist" onclick="window.toggleSort('dist')" class="num">距离 <span class="sort-arrow"></span></th>
+              <th data-sort="speed" onclick="window.toggleSort('speed')" class="num">均速 <span class="sort-arrow"></span></th>
+              <th data-sort="topSpeed" onclick="window.toggleSort('topSpeed')" class="num">极速 <span class="sort-arrow"></span></th>
+              <th data-sort="hr" onclick="window.toggleSort('hr')" class="num">均心 <span class="sort-arrow"></span></th>
+              <th data-sort="elev" onclick="window.toggleSort('elev')" class="num">爬升 <span class="sort-arrow"></span></th>
+              <th style="width:28px"></th>
+            </tr>
+          </thead>
+          <tbody id="rt"></tbody>
+        </table>
+      </div>
+
+      <!-- 月度里程 / 骑行详情（共用一块） -->
+      <div class="cd" id="leftCard">
+        <div class="hd">
+          <span class="ic" id="leftIcon">📊</span>
+          <span id="leftTitle">月度里程</span>
+          <span id="dTitle" style="text-transform:none;color:#333;font-weight:500;flex:1;display:none"></span>
+          <button class="del-btn" id="backBtn" onclick="window.closeDetail()" title="返回月度里程" style="display:none">✕</button>
+          <button class="del-btn" id="delDetailBtn" onclick="window.deleteRide()" title="删除此记录" style="display:none">🗑️</button>
+          <button class="del-btn" id="editDetailBtn" onclick="window.editRideName()" title="重命名路线" style="display:none">✏️</button>
+        </div>
+
+        <!-- 月度里程视图（默认） -->
+        <div id="monthlyView">
+          <div class="ch"><canvas id="mc"></canvas></div>
+          <div class="sel-hr" id="selHR">
+            <div class="hd" style="margin-top:10px;margin-bottom:4px"><span class="ic">💓</span> 心率区间分布 · <span id="selHRTitle" style="text-transform:none;font-weight:500;color:#555"></span></div>
+            <div id="selHRBars"></div>
+          </div>
+          <!-- 骑行成就 -->
+          <div class="achievements" id="achievements"></div>
+        </div>
+
+        <!-- 骑行详情视图（点击路线后替换） -->
+        <div id="detailView" style="display:none">
+          <div class="dc">
+            <div class="dc-ch">
+              <div class="dc-h">心率 (bpm)</div>
+              <canvas id="dcHr"></canvas>
+            </div>
+            <div class="dc-ch">
+              <div class="dc-h">速度 (km/h)</div>
+              <canvas id="dcSpd"></canvas>
+            </div>
+            <div class="dc-ch">
+              <div class="dc-h">海拔 (m)</div>
+              <canvas id="dcAlt"></canvas>
+            </div>
+            <div class="dc-ch" id="dcCadenceWrap" style="display:none">
+              <div class="dc-h">踏频 (rpm)</div>
+              <canvas id="dcCadence"></canvas>
+            </div>
+            <div class="ch-hint">📍 鼠标划过趋势图上方时，地图会显示对应位置</div>
+            <div class="ride-notes" id="rideNotes" style="display:none">
+              <div class="dc-h" style="margin-top:6px">💬 骑行点评</div>
+              <textarea id="notesInput" rows="3" placeholder="写点骑行感想…"></textarea>
+              <div style="display:flex;gap:6px;margin-top:6px">
+                <button class="btn-primary-small" id="notesSaveBtn">保存</button>
+                <span id="notesStatus" style="font-size:11px;color:#999;line-height:28px"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 路线统计 -->
+      <div class="cd fw">
+        <div class="hd"><span class="ic">🏆</span> 路线统计</div>
+        <table>
+          <thead>
+            <tr id="rsth">
+              <th onclick="window.toggleRouteSort('name')">路线 <span class="sort-arrow"></span></th>
+              <th onclick="window.toggleRouteSort('count')" class="num">次数 <span class="sort-arrow"></span></th>
+              <th onclick="window.toggleRouteSort('recent')" class="num">最近日期 <span class="sort-arrow"></span></th>
+              <th>均速趋势</th><th>均心趋势</th>
+              <th class="num">最佳均速</th><th class="num">最快极速</th>
+            </tr>
+          </thead>
+          <tbody id="rst"></tbody>
+        </table>
+      </div>
+
+      <!-- 同路线对比 -->
+      <div class="cd fw">
+        <div class="hd"><span class="ic">🔁</span> 同路线对比</div>
+        <div>
+          <select id="cr"></select>
+          <select id="c1"></select>
+          <span style="font-size:12px;color:#999;">vs</span>
+          <select id="c2"></select>
+          <button class="btn" onclick="window.runC()">对比</button>
+        </div>
+        <div class="cx" id="cx">
+          <table style="margin-top:10px;max-width:480px;">
+            <thead><tr><th>项目</th><th>A</th><th>B</th><th>差值</th></tr></thead>
+            <tbody id="cb"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script type="module" src="js/app.js?v=6"></script>
+
+  <!-- 设置弹窗 -->
+  <div class="modal-overlay" id="settingsModal" style="display:none">
+    <div class="modal-box" style="max-width:480px">
+      <div class="modal-title">⚙️ 设置</div>
+      <p class="modal-desc">设置骑行记录 .md 文件自动导出位置（不配置也不影响看板使用）</p>
+      <div style="margin-bottom:10px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="obsidianEnabled">
+          <span>启用 .md 自动导出</span>
+        </label>
+      </div>
+      <div style="margin-bottom:10px">
+        <div style="font-size:12px;color:#888;margin-bottom:4px">导出路径（选择文件夹后自动填入）</div>
+        <div style="display:flex;gap:6px">
+          <input type="text" class="modal-input" id="obsidianVault" placeholder="如: ~/Desktop/KAS/生活/自行车/骑行记录.md" style="flex:1">
+          <button class="btn btn-secondary" id="pickFolderBtn">📁 选择</button>
+        </div>
+      </div>
+      <div id="obsidianStatus" style="font-size:12px;color:#888;margin-bottom:10px"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+        <button class="btn btn-secondary" id="reExportBtn">📤 立即导出</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" id="settingsCancel">取消</button>
+          <button class="btn btn-primary" id="settingsSave">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 路线命名弹窗 -->
+  <div class="modal-overlay" id="routeModal" style="display:none">
+    <div class="modal-box">
+      <div class="modal-title">✏️ 命名路线</div>
+      <p class="modal-desc" id="routeModalDesc">这是一条新路线：</p>
+
+      <!-- 模式选择 -->
+      <div class="name-mode-tabs" id="nameModeTabs">
+        <button class="name-mode-tab active" data-mode="ab" id="modeAB">🅰️→🅱 起终点</button>
+        <button class="name-mode-tab" data-mode="loop" id="modeLoop">🔄 绕圈</button>
+        <button class="name-mode-tab" data-mode="custom" id="modeCustom">✏️ 自定义</button>
+      </div>
+
+      <!-- 起终点模式 -->
+      <div class="name-mode-panel" id="panelAB">
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <div style="flex:1">
+            <div style="font-size:11px;color:#888;margin-bottom:2px">起点</div>
+            <input type="text" class="modal-input" id="routeStart" placeholder="如：家" style="font-size:13px">
+          </div>
+          <div style="flex:1">
+            <div style="font-size:11px;color:#888;margin-bottom:2px">终点</div>
+            <input type="text" class="modal-input" id="routeEnd" placeholder="如：王府井" style="font-size:13px">
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#888;margin-bottom:2px">途经路线（可选）</div>
+          <input type="text" class="modal-input" id="routePath" placeholder="如：长安街、三环" style="font-size:13px">
+        </div>
+        <div style="margin-top:6px;font-size:11px;color:#aaa;line-height:1.4">
+          <span id="abHint">📍 获取位置信息…</span>
+        </div>
+      </div>
+
+      <!-- 绕圈模式 -->
+      <div class="name-mode-panel" id="panelLOOP" style="display:none">
+        <div style="font-size:11px;color:#888;margin-bottom:2px">地点名称</div>
+        <input type="text" class="modal-input" id="routeLoopName" placeholder="如：奥体中心" style="font-size:13px">
+        <div style="margin-top:6px;font-size:11px;color:#aaa">
+          <span id="loopHint">📍 获取位置信息…</span>
+        </div>
+      </div>
+
+      <!-- 自定义模式 -->
+      <div class="name-mode-panel" id="panelCustom" style="display:none">
+        <div style="font-size:11px;color:#888;margin-bottom:2px">路线名称</div>
+        <input type="text" class="modal-input" id="routeCustomName" placeholder="如：周末休闲骑" style="font-size:13px">
+      </div>
+
+      <!-- 预览 -->
+      <div id="routePreview" style="margin-top:10px;padding:8px 10px;background:#f5f5f7;border-radius:8px;font-size:13px;color:#333">
+        预览：<span id="routePreviewText"></span>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="routeNameCancel">取消</button>
+        <button class="btn btn-primary" id="routeNameConfirm">确定</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
