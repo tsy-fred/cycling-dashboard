@@ -155,7 +155,7 @@ function switchToDetail(title) {
   document.getElementById('leftTitle').style.display = 'none';
   document.getElementById('backBtn').style.display = 'inline-flex';
   document.getElementById('dTitle').style.display = 'inline';
-  document.getElementById('dTitle').textContent = title;
+  document.getElementById('dTitle').innerHTML = title;
 }
 
 function switchToMonthly() {
@@ -183,11 +183,11 @@ window.showRide = function(i) {
     haversineKm(r.start_lat, r.start_lng, r.end_lat, r.end_lng) < 0.3;
   let lapInfo = '';
   if (isLoop && r.track_points && r.track_points.length > 10) {
-    const laps = countLaps(r.track_points);
+    const laps = r.manual_laps || countLaps(r.track_points);
     if (laps >= 1) {
       const avgLapMin = r.moving_time_min ? (r.moving_time_min / laps) : 0;
       const lapTime = avgLapMin >= 1 ? `${Math.floor(avgLapMin)}′${Math.round(avgLapMin % 1 * 60)}″` : `${Math.round(avgLapMin * 60)}″`;
-      lapInfo = ` · ${laps} 圈 · 均 ${lapTime}/圈`;
+      lapInfo = ` · <span class="lap-edit" onclick="event.stopPropagation();window.editLaps(${i})" title="点击修改圈数">${laps} 圈</span> · 均 ${lapTime}/圈`;
     }
   }
   switchToDetail(`${r.date} · ${r.route}${lapInfo} · ${r.distance_km}km · ${r.start_time || ''}-${r.end_time || ''}`);
@@ -316,13 +316,27 @@ async function saveAllRides() {
       distance_km: r.distance_km, avg_speed_kmh: r.avg_speed_kmh, max_speed_kmh: r.max_speed_kmh,
       avg_hr: r.avg_hr, max_hr: r.max_hr, calories: r.calories, elev_gain_m: r.elev_gain_m,
       min_alt_m: r.min_alt_m, max_alt_m: r.max_alt_m, moving_time_min: r.moving_time_min,
-      num_laps: r.num_laps, hr_zones: r.hr_zones, notes: r.notes,
+      num_laps: r.num_laps, manual_laps: r.manual_laps, hr_zones: r.hr_zones, notes: r.notes,
       has_cadence: r.has_cadence, avg_cadence: r.avg_cadence, max_cadence: r.max_cadence,
       track_points: r.track_points, start_lat: r.start_lat, start_lng: r.start_lng, end_lat: r.end_lat, end_lng: r.end_lng,
     }));
     await fetch('/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ _replace: true, records }) });
   } catch (e) { console.warn('保存失败:', e); }
 }
+
+window.editLaps = function(i) {
+  const idx = i !== undefined ? i : _currentViewIdx;
+  if (idx < 0 || idx >= RIDES.length) return;
+  const ride = RIDES[idx];
+  const auto = countLaps(ride.track_points || []);
+  const val = prompt(`修改「${ride.route}」的圈数（自动检测为 ${auto} 圈）：`, ride.manual_laps || auto);
+  if (val === null) return;
+  const num = parseInt(val);
+  if (isNaN(num) || num < 1) return;
+  ride.manual_laps = num;
+  saveAllRides();
+  window.showRide(idx);
+};
 
 window.editRideName = function() {
   if (_currentViewIdx < 0 || _currentViewIdx >= RIDES.length) return;
@@ -696,10 +710,11 @@ async function handleParsedRide(parsed, file) {
         lapCount = countLaps(parsed.track_points);
       }
       let lapInfo = '';
-      if (lapCount >= 1) {
-        const avgLapMin = parsed.moving_time_min ? (parsed.moving_time_min / lapCount) : 0;
+      const useLaps = parsed.manual_laps || lapCount;
+      if (useLaps >= 1) {
+        const avgLapMin = parsed.moving_time_min ? (parsed.moving_time_min / useLaps) : 0;
         const lpTime = avgLapMin >= 1 ? `${Math.floor(avgLapMin)}′${Math.round(avgLapMin % 1 * 60)}″` : `${Math.round(avgLapMin * 60)}″`;
-        lapInfo = ` · ${lapCount} 圈 · 均 ${lpTime}/圈`;
+        lapInfo = ` · ${useLaps} 圈 · 均 ${lpTime}/圈`;
       }
       document.querySelector('[data-mode="loop"]').classList.add('active');
       document.getElementById('panelLOOP').style.display = '';
@@ -749,7 +764,7 @@ function buildRideObject(parsed, filename) {
     distance_km: parsed.distance_km || 0, avg_speed_kmh: parsed.avg_speed_kmh || 0, max_speed_kmh: parsed.max_speed_kmh || 0,
     avg_hr: parsed.avg_hr || 0, max_hr: parsed.max_hr || 0, calories: parsed.calories || 0,
     elev_gain_m: parsed.elev_gain_m || 0, min_alt_m: parsed.min_alt_m || 0, max_alt_m: parsed.max_alt_m || 0,
-    moving_time_min: parsed.moving_time_min || 0, num_laps: parsed.num_laps || 0,
+    moving_time_min: parsed.moving_time_min || 0, num_laps: parsed.num_laps || 0, manual_laps: parsed.manual_laps || 0,
     notes: parsed.notes || '',
     hr_zones: parsed.hr_zones || { zone1: 0, zone2: 0, zone3: 0, zone4: 0, zone5: 0 },
     has_cadence: !!parsed.has_cadence, avg_cadence: parsed.avg_cadence || 0, max_cadence: parsed.max_cadence || 0,
