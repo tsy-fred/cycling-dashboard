@@ -1,0 +1,13 @@
+{
+  "name": "cycling-dashboard-dev",
+  "private": true,
+  "dependencies": {
+    "fit-file-parser": "^3.0.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  },
+  "scripts": {
+    "build": "esbuild --bundle node_modules/fit-file-parser/dist/index.js --outfile=js/fit-parser-bundle.js --global-name=FitParser --format=iife"
+  }
+}

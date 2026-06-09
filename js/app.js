@@ -187,7 +187,7 @@ window.showRide = function(i) {
     if (laps >= 1) {
       const avgLapMin = r.moving_time_min ? (r.moving_time_min / laps) : 0;
       const lapTime = avgLapMin >= 1 ? `${Math.floor(avgLapMin)}′${Math.round(avgLapMin % 1 * 60)}″` : `${Math.round(avgLapMin * 60)}″`;
-      lapInfo = ` · <span class="lap-edit" onclick="event.stopPropagation();window.editLaps(${i})" title="点击修改圈数">${laps} 圈</span> · 均 ${lapTime}/圈`;
+      lapInfo = ` · <span class="lap-edit" onclick="event.stopPropagation();window.editLaps(${i})" title="点击修改圈数">${laps} 圈 ✏️</span> · 均 ${lapTime}/圈`;
     }
   }
   switchToDetail(`${r.date} · ${r.route}${lapInfo} · ${r.distance_km}km · ${r.start_time || ''}-${r.end_time || ''}`);
@@ -656,13 +656,106 @@ async function uploadFit(file) {
   dropZone.style.display = 'block';
   showStatus(`正在解析 ${file.name}...`, 'info');
   try {
-    const blob = await file.arrayBuffer();
-    const res = await fetch('/upload', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob });
-    const parsed = await res.json();
-    if (parsed.error) return showStatus(`❌ ${parsed.error}`, 'err');
-    parsed.filename = file.name;
+    const buffer = await file.arrayBuffer();
+
+    // 浏览器端解析（fit-parser-bundle.js）
+    let parsed = null;
+    if (window.FitParser) {
+      parsed = await new Promise((resolve, reject) => {
+        try {
+          const Lib = window.FitParser.default || window.FitParser;
+          const parser = new Lib({ force: true, speedUnit: 'km/h', lengthUnit: 'km' });
+          parser.parse(buffer, (err, data) => {
+            if (err) return reject(new Error(err));
+            try { resolve(buildParsedFromFitFile(data, file.name)); }
+            catch (e) { reject(e); }
+          });
+        } catch (e) { reject(e); }
+      });
+    }
+
+    // 回退到服务器解析
+    if (!parsed) {
+      const res = await fetch('/upload', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: buffer });
+      parsed = await res.json();
+      if (parsed.error) return showStatus(`❌ ${parsed.error}`, 'err');
+      parsed.filename = file.name;
+    }
+
     await handleParsedRide(parsed, file);
   } catch (err) { showStatus(`❌ 上传失败: ${err.message}`, 'err'); }
+}
+
+function buildParsedFromFitFile(data, filename) {
+  const session = (data.sessions || [])[0] || {};
+  const records = data.records || [];
+  const laps = data.laps || [];
+
+  const hrs = records.filter(r => r.heart_rate > 0).map(r => r.heart_rate);
+  const hrZones = { zone1: 0, zone2: 0, zone3: 0, zone4: 0, zone5: 0 };
+  for (const hr of hrs) {
+    if (hr < 140) hrZones.zone1++;
+    else if (hr < 152) hrZones.zone2++;
+    else if (hr < 164) hrZones.zone3++;
+    else if (hr < 176) hrZones.zone4++;
+    else hrZones.zone5++;
+  }
+  const th = hrs.length || 1;
+  for (const k of Object.keys(hrZones)) hrZones[k] = +(hrZones[k] / th * 100).toFixed(1);
+
+  const cads = records.filter(r => r.cadence > 0).map(r => r.cadence);
+  const startDt = session.start_time ? new Date(session.start_time) : null;
+  const elapsed = session.total_elapsed_time || 0;
+  const endDt = startDt ? new Date(startDt.getTime() + elapsed * 1000) : null;
+
+  const alts = records.map(r => r.altitude).filter(a => a != null);
+  const minAlt = alts.length ? Math.min(...alts) : 0;
+  const maxAlt = alts.length ? Math.max(...alts) : 0;
+
+  const trackPoints = [];
+  let firstPt = null, lastPt = null;
+  const sr = Math.max(1, Math.floor(records.length / 500));
+  for (let i = 0; i < records.length; i += sr) {
+    const r = records[i];
+    if (r.position_lat == null || r.position_long == null) continue;
+    const lat = Math.round(r.position_lat * 1e6) / 1e6;
+    const lng = Math.round(r.position_long * 1e6) / 1e6;
+    if (firstPt === null) firstPt = { lat, lng };
+    lastPt = { lat, lng };
+    const pt = [lat, lng, r.speed || 0, r.heart_rate || 0, r.altitude || 0];
+    if (r.cadence > 0) pt.push(r.cadence);
+    trackPoints.push(pt);
+  }
+
+  function sc(v) { return v != null ? +v.toFixed(4) : null; }
+
+  return {
+    filename,
+    distance_km: +(session.total_distance || 0).toFixed(2),
+    avg_speed_kmh: +(session.avg_speed || 0).toFixed(1),
+    max_speed_kmh: +(session.max_speed || 0).toFixed(1),
+    avg_hr: session.avg_heart_rate || 0,
+    max_hr: session.max_heart_rate || 0,
+    calories: session.total_calories || 0,
+    elev_gain_m: +(maxAlt - minAlt).toFixed(1),
+    min_alt_m: +minAlt.toFixed(1),
+    max_alt_m: +maxAlt.toFixed(1),
+    moving_time_min: +((session.total_timer_time || session.total_elapsed_time || 0) / 60).toFixed(1),
+    num_laps: laps.length || session.num_laps || 0,
+    hr_zones: hrZones,
+    has_cadence: cads.length > 0,
+    avg_cadence: cads.length ? +(cads.reduce((a, b) => a + b, 0) / cads.length).toFixed(1) : 0,
+    max_cadence: cads.length ? Math.max(...cads) : 0,
+    date: startDt ? startDt.toISOString().slice(0, 10) : 'unknown',
+    start_time: startDt ? startDt.toISOString().slice(11, 16) : null,
+    end_time: endDt ? endDt.toISOString().slice(11, 16) : null,
+    track_points: trackPoints,
+    start_lat: sc(session.start_position_lat) ?? (firstPt?.lat ?? null),
+    start_lng: sc(session.start_position_long) ?? (firstPt?.lng ?? null),
+    end_lat: sc(session.end_position_lat) ?? (lastPt?.lat ?? null),
+    end_lng: sc(session.end_position_long) ?? (lastPt?.lng ?? null),
+    _parser: 'browser',
+  };
 }
 
 function reverseRouteName(name) {
