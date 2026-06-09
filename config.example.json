@@ -1,0 +1,13 @@
+{
+  "_comment": "骑行看板配置文件 — 复制为 config.json 后编辑",
+  "obsidian": {
+    "enabled": false,
+    "vault_path": "",
+    "_hint": "导出 .md 的完整路径，如 ~/Documents/骑行记录.md。不配置不影响看板使用"
+  },
+  "server": {
+    "port": 8080,
+    "auto_open_browser": true,
+    "_hint": "看板服务端口，默认 8080"
+  }
+}
