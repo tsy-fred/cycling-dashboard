@@ -179,7 +179,18 @@ window.showRide = function(i) {
   const r = RIDES[i];
   if (!r) return;
   _currentViewIdx = i;
-  switchToDetail(`${r.date} · ${r.route} · ${r.distance_km}km · ${r.start_time || ''}-${r.end_time || ''}`);
+  const isLoop = r.start_lat != null && r.end_lat != null &&
+    haversineKm(r.start_lat, r.start_lng, r.end_lat, r.end_lng) < 0.3;
+  let lapInfo = '';
+  if (isLoop && r.track_points && r.track_points.length > 10) {
+    const laps = countLaps(r.track_points);
+    if (laps >= 1) {
+      const avgLapMin = r.moving_time_min ? (r.moving_time_min / laps) : 0;
+      const lapTime = avgLapMin >= 1 ? `${Math.floor(avgLapMin)}′${Math.round(avgLapMin % 1 * 60)}″` : `${Math.round(avgLapMin * 60)}″`;
+      lapInfo = ` · ${laps} 圈 · 均 ${lapTime}/圈`;
+    }
+  }
+  switchToDetail(`${r.date} · ${r.route}${lapInfo} · ${r.distance_km}km · ${r.start_time || ''}-${r.end_time || ''}`);
   document.getElementById('delDetailBtn').style.display = 'inline-flex';
   document.getElementById('editDetailBtn').style.display = 'inline-flex';
   document.querySelectorAll('#rt tr').forEach(el => el.classList.remove('act'));
@@ -425,8 +436,26 @@ function getTrackMidpoint(trackPoints) {
   return { lat: trackPoints[mid][0], lng: trackPoints[mid][1] };
 }
 
+function countLaps(trackPoints) {
+  if (!trackPoints || trackPoints.length < 10) return 1;
+  const startLat = trackPoints[0][0], startLng = trackPoints[0][1];
+  let passes = 0, inZone = false;
+  const threshold = 0.3; // 300m，容忍 GPS 漂移
+
+  for (let i = 1; i < trackPoints.length; i++) {
+    const d = haversineKm(trackPoints[i][0], trackPoints[i][1], startLat, startLng);
+    if (d < threshold && !inZone) {
+      passes++;
+      inZone = true;
+    } else if (d >= threshold * 1.5) {
+      inZone = false;
+    }
+  }
+  return Math.max(1, passes);
+}
+
 function matchRouteByGPS(startLat, startLng, endLat, endLng, trackPoints) {
-  const isLoop = startLat != null && endLat != null && haversineKm(startLat, startLng, endLat, endLng) < 0.2;
+  const isLoop = startLat != null && endLat != null && haversineKm(startLat, startLng, endLat, endLng) < 0.3;
   const newMid = isLoop && trackPoints ? getTrackMidpoint(trackPoints) : null;
   let best = null, bestDist = Infinity;
 
@@ -443,7 +472,7 @@ function matchRouteByGPS(startLat, startLng, endLat, endLng, trackPoints) {
       if (dr < bestDist * 1.15 && sdr < GPS_MATCH_KM && edr < GPS_MATCH_KM) { bestDist = dr; best = { route: r.route, reversed: true }; }
     }
     if (isLoop) {
-      const rIsLoop = r.start_lat != null && r.end_lat != null && haversineKm(r.start_lat, r.start_lng, r.end_lat, r.end_lng) < 0.2;
+      const rIsLoop = r.start_lat != null && r.end_lat != null && haversineKm(r.start_lat, r.start_lng, r.end_lat, r.end_lng) < 0.3;
       if (!rIsLoop) continue;
       const sd = haversineKm(startLat, startLng, r.start_lat, r.start_lng);
       if (sd >= GPS_MATCH_KM) continue;
@@ -639,7 +668,7 @@ async function handleParsedRide(parsed, file) {
   } else {
     pendingUploadData = { parsed, file };
     const isLoop = parsed.start_lat != null && parsed.end_lat != null &&
-      haversineKm(parsed.start_lat, parsed.start_lng, parsed.end_lat, parsed.end_lng) < 0.2;
+      haversineKm(parsed.start_lat, parsed.start_lng, parsed.end_lat, parsed.end_lng) < 0.3;
 
     // 获取地名
     let [startName, endName] = await Promise.all([
@@ -657,16 +686,24 @@ async function handleParsedRide(parsed, file) {
     document.querySelectorAll('.name-mode-tab').forEach(t => t.classList.remove('active'));
 
     if (isLoop) {
-      // 计算中点位置说明
+      // 计算中点位置说明 + 圈数
       let midHint = '';
+      let lapCount = 0;
       if (parsed.track_points && parsed.track_points.length > 3) {
         const midPt = parsed.track_points[Math.floor(parsed.track_points.length / 2)];
         const midName = await getLocationHint(midPt[0], midPt[1]);
         if (midName) midHint = ` · 途经 ${midName}`;
+        lapCount = countLaps(parsed.track_points);
+      }
+      let lapInfo = '';
+      if (lapCount >= 1) {
+        const avgLapMin = parsed.moving_time_min ? (parsed.moving_time_min / lapCount) : 0;
+        const lpTime = avgLapMin >= 1 ? `${Math.floor(avgLapMin)}′${Math.round(avgLapMin % 1 * 60)}″` : `${Math.round(avgLapMin * 60)}″`;
+        lapInfo = ` · ${lapCount} 圈 · 均 ${lpTime}/圈`;
       }
       document.querySelector('[data-mode="loop"]').classList.add('active');
       document.getElementById('panelLOOP').style.display = '';
-      document.getElementById('loopHint').textContent = `📍 ${startName}${midHint} · ${parsed.distance_km}km`;
+      document.getElementById('loopHint').textContent = `📍 ${startName}${midHint}${lapInfo} · ${parsed.distance_km}km`;
       document.getElementById('routeLoopName').value = startName.includes(',') ? '' : startName;
     } else {
       document.querySelector('[data-mode="ab"]').classList.add('active');
