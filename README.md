@@ -4,7 +4,7 @@
 
 将 WorkoutDoors / Garmin 等 App 导出的 .fit 骑行文件拖拽到浏览器，自动解析并展示地图路线、骑行数据和分析统计。
 
-![看板截图](screenshot.png)
+![看板截图](docs/%E7%9C%8B%E6%9D%BF1-%E6%80%BB%E8%A7%88.png)
 
 ## ✨ 功能一览
 
