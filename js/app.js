@@ -344,10 +344,14 @@ window.editRideName = function() {
   const oldName = ride.route;
   const newName = prompt(`将路线「${oldName}」重命名为：`, oldName);
   if (!newName || newName.trim() === oldName) return;
-  RIDES.forEach(r => { if (r.route === oldName) r.route = newName.trim(); });
-  if (RC[oldName]) { RC[newName.trim()] = RC[oldName]; delete RC[oldName]; }
-  const ri = RO.indexOf(oldName);
-  if (ri >= 0) RO[ri] = newName.trim();
+  // 只重命名当前选中的这一条记录，不改其他同路线的
+  ride.route = newName.trim();
+  // 如果新路线名没有配色，从旧路线名继承一个
+  if (!RC[newName.trim()] && RC[oldName]) {
+    RC[newName.trim()] = RC[oldName];
+  }
+  // 确保路线顺序里有新名字
+  if (!RO.includes(newName.trim())) RO.push(newName.trim());
   refreshAll(); saveAllRides();
 };
 
@@ -468,7 +472,7 @@ function countLaps(trackPoints) {
   return Math.max(1, passes);
 }
 
-function matchRouteByGPS(startLat, startLng, endLat, endLng, trackPoints) {
+function matchRouteByGPS(startLat, startLng, endLat, endLng, trackPoints, newDistKm) {
   const isLoop = startLat != null && endLat != null && haversineKm(startLat, startLng, endLat, endLng) < 0.3;
   const newMid = isLoop && trackPoints ? getTrackMidpoint(trackPoints) : null;
   let best = null, bestDist = Infinity;
@@ -491,7 +495,15 @@ function matchRouteByGPS(startLat, startLng, endLat, endLng, trackPoints) {
       const sd = haversineKm(startLat, startLng, r.start_lat, r.start_lng);
       if (sd >= GPS_MATCH_KM) continue;
       const rMid = r.track_points ? getTrackMidpoint(r.track_points) : null;
-      if (newMid && rMid) { const md = haversineKm(newMid.lat, newMid.lng, rMid.lat, rMid.lng); const distDiff = Math.abs((r.distance_km || 0) - (r.distance_km || 0)); if (md * 2 + Math.min(distDiff, 5) < bestDist) { bestDist = md * 2 + Math.min(distDiff, 5); best = { route: r.route, reversed: false }; } }
+      if (newMid && rMid) {
+        const md = haversineKm(newMid.lat, newMid.lng, rMid.lat, rMid.lng);
+        const distDiff = Math.abs((newDistKm || 0) - (r.distance_km || 0));
+        // 中点距离 < 500m 且总路程差 < 2km 才匹配
+        if (md < 0.5 && distDiff < 2 && md * 2 + distDiff < bestDist) {
+          bestDist = md * 2 + distDiff;
+          best = { route: r.route, reversed: false };
+        }
+      }
     }
   }
   return best;
@@ -766,7 +778,7 @@ function reverseRouteName(name) {
 }
 
 async function handleParsedRide(parsed, file) {
-  const match = matchRouteByGPS(parsed.start_lat, parsed.start_lng, parsed.end_lat, parsed.end_lng, parsed.track_points);
+  const match = matchRouteByGPS(parsed.start_lat, parsed.start_lng, parsed.end_lat, parsed.end_lng, parsed.track_points, parsed.distance_km);
   if (match) {
     parsed.route = match.reversed ? reverseRouteName(match.route) : match.route;
     showStatus(`✅ ${file.name || parsed.filename} 已匹配路线「${parsed.route}」${match.reversed ? '(方向相反)' : ''}`, 'ok');
