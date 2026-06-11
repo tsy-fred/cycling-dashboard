@@ -29,6 +29,9 @@ let _sortAsc = true;
 let _rsSortCol = null;
 let _rsSortAsc = true;
 
+// 初始化 Lucide 图标
+if (window.lucide) lucide.createIcons();
+
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     const data = await loadRides();
@@ -56,9 +59,14 @@ function getDisplayColor(route) {
   return calcDisplayColor(base, calcRouteActivity(route));
 }
 
+function renderIcons() {
+  if (window.lucide) lucide.createIcons();
+}
+
 function refreshAll() {
   initStats();
   initAchievements();
+  renderIcons();
   if (!document.querySelector('#map .leaflet-container')) {
     initMap(RIDES, RC, showRide, getDisplayColor);
   }
@@ -77,7 +85,7 @@ function initAchievements() {
   const fastest = RIDES.reduce((a, b) => (a.avg_speed_kmh || 0) > (b.avg_speed_kmh || 0) ? a : b);
   const highest = RIDES.reduce((a, b) => (a.elev_gain_m || 0) > (b.elev_gain_m || 0) ? a : b);
   const fastestTop = RIDES.reduce((a, b) => (a.max_speed_kmh || 0) > (b.max_speed_kmh || 0) ? a : b);
-  el.innerHTML = `<div class="hd" style="margin-top:10px;margin-bottom:6px"><span class="ic">🏆</span> 骑行成就</div>
+  el.innerHTML = `<div class="hd" style="margin-top:10px;margin-bottom:6px"><i data-lucide="trophy" class="lci"></i> 骑行成就</div>
     <div class="ach-grid">
       <div class="ach-item"><span class="ach-val">${longest.distance_km || 0}</span><span class="ach-unit">km</span><span class="ach-label">最长距离</span><span class="ach-date">${longest.date || ''}</span></div>
       <div class="ach-item"><span class="ach-val">${fastest.avg_speed_kmh || 0}</span><span class="ach-unit">km/h</span><span class="ach-label">最佳均速</span><span class="ach-date">${fastest.date || ''}</span></div>
@@ -248,6 +256,7 @@ window.toggleRouteSort = function(col) {
   if (_rsSortCol === col) _rsSortAsc = !_rsSortAsc;
   else { _rsSortCol = col; _rsSortAsc = true; }
   initRouteStats();
+  renderIcons();
 };
 
 function initComp() {

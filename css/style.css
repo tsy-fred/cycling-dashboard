@@ -1,5 +1,9 @@
 
 *{margin:0;padding:0;box-sizing:border-box}
+.lci{display:inline-block;width:16px;height:16px;vertical-align:middle;margin-right:3px;stroke-width:2}
+h1 .lci{width:22px;height:22px}
+.sel-hr .lci{width:14px;height:14px}
+.ch-hint .lci{width:12px;height:12px;margin-right:2px}
 body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;background:#f7f8fa;color:#222;font-size:14px;line-height:1.5}
 .wrap{max-width:1200px;margin:0 auto;padding:20px 24px}
 .top{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px}
