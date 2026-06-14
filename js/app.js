@@ -4,16 +4,21 @@
  */
 
 import { loadRides } from './storage.js';
-import { initMap, rebuildMapLayers, initLegend, highlightRide, fitRideBounds, placeCrosshair, clearCrosshair, setPolylineStyle, resetPolylineStyles, fitBoundsToPoints, renderLocations, setContextMenuHandler } from './map.js';
+import { initMap, rebuildMapLayers, initLegend, highlightRide, fitRideBounds, placeCrosshair, clearCrosshair, setPolylineStyle, resetPolylineStyles, fitBoundsToPoints, renderLocations, setContextMenuHandler, renderSpeedHeatmap, clearSpeedHeatmap } from './map.js';
 import { initMonthlyChart, renderDetail, renderSelectedHR } from './charts.js';
 import { loadLocations, getLocations, addLocation, removeLocation, renameLocation, findNearestLocation, saveLocations } from './locations.js';
 
 const KNOWN_ROUTE_COLORS = {};
 
 const COLOR_PALETTE = [
-  '#E91E63', '#9C27B0', '#FF5722', '#00BCD4',
-  '#795548', '#607D8B', '#FF9800', '#8BC34A',
-  '#673AB7', '#009688', '#CDDC39', '#3F51B5',
+  '#E53935', // 红
+  '#FF8F00', // 琥珀
+  '#43A047', // 绿
+  '#00ACC1', // 青
+  '#1E88E5', // 蓝
+  '#8E24AA', // 紫
+  '#D81B60', // 粉
+  '#FB8C00', // 橙
 ];
 
 const GPS_MATCH_KM = 0.5;
@@ -24,8 +29,8 @@ let RO = [];
 let LOCATIONS = [];
 let _currentViewIdx = -1;
 let pendingUploadData = null;
-let _sortCol = null;
-let _sortAsc = true;
+let _sortCol = 'date';
+let _sortAsc = false;
 let _rsSortCol = null;
 let _rsSortAsc = true;
 
@@ -180,6 +185,7 @@ function switchToMonthly() {
 }
 
 window.closeDetail = function() {
+  clearSpeedHeatmap();
   switchToMonthly();
 };
 
@@ -206,6 +212,11 @@ window.showRide = function(i) {
   if (row) row.classList.add('act');
   highlightRide(i);
   fitRideBounds(r);
+  // 速度热力图
+  if (r.track_points && r.track_points.length > 3) {
+    const topSpeed = r.max_speed_kmh || 30;
+    renderSpeedHeatmap(r.track_points, topSpeed, i);
+  }
   renderSelectedHR(r.hr_zones, `${r.date} · ${r.route} · ${r.distance_km}km`);
   renderDetail(r, (tpIdx, pt) => { placeCrosshair(pt[0], pt[1]); }, () => { clearCrosshair(); });
   const input = document.getElementById('notesInput');
@@ -313,6 +324,7 @@ window.deleteRide = function(i) {
   RIDES.splice(idx, 1);
   const usedRoutes = new Set(RIDES.map(r => r.route));
   for (const route of Object.keys(RC)) { if (!usedRoutes.has(route)) { delete RC[route]; const ri = RO.indexOf(route); if (ri >= 0) RO.splice(ri, 1); } }
+  clearSpeedHeatmap();
   refreshAll();
   switchToMonthly();
   saveAllRides();
@@ -440,8 +452,8 @@ function calcRouteActivity(route) {
 
 function calcDisplayColor(baseColor, activity) {
   if (activity >= 80) return baseColor;
-  if (activity >= 40) return desaturate(baseColor, 0.35);
-  if (activity >= 10) return desaturate(baseColor, 0.65);
+  if (activity >= 40) return desaturate(baseColor, 0.2);
+  if (activity >= 10) return desaturate(baseColor, 0.5);
   return '#bdbdbd';
 }
 
