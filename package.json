@@ -9,5 +9,6 @@
   },
   "scripts": {
     "build": "esbuild --bundle node_modules/fit-file-parser/dist/index.js --outfile=js/fit-parser-bundle.js --global-name=FitParser --format=iife"
-  }
+  },
+  "version": "0.1.0"
 }
