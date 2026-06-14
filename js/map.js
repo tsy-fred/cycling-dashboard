@@ -350,3 +350,87 @@ export function setContextMenuHandler(handler) {
 export function refreshLocationMarkers(locations, onRightClick, onDragEnd) {
   renderLocations(locations, onRightClick, onDragEnd);
 }
+
+// ═════════════════════════════════════════════════════════════════════
+//  速度热力图层
+// ═════════════════════════════════════════════════════════════════════
+
+let speedLayer = null; // 当前选中的速度热力图层
+
+/**
+ * 在选定路线上渲染速度渐变（红→黄→绿，极速段为蓝）
+ * @param {Array} trackPoints - [[lat, lng, speed_kmh, hr, alt], ...]
+ * @param {number} maxSpeed - 该路线最高速度，用于归一化
+ * @param {number} rideIndex - 在 allPolylines 中的索引
+ */
+export function renderSpeedHeatmap(trackPoints, maxSpeed, rideIndex) {
+  // 清除旧热力层
+  clearSpeedHeatmap();
+
+  if (!map || !trackPoints || trackPoints.length < 3) return;
+
+  // 隐藏默认的折线
+  if (allPolylines[rideIndex]) {
+    allPolylines[rideIndex].setStyle({ opacity: 0.1, weight: 1 });
+  }
+
+  speedLayer = L.layerGroup();
+
+  const topSpeed = maxSpeed || 30;
+  const sortedSpeeds = trackPoints.map(p => p[2] || 0).sort((a, b) => a - b);
+  const p95 = sortedSpeeds.length ? sortedSpeeds[Math.floor(sortedSpeeds.length * 0.95)] : 0;
+  const blueRange = Math.max(topSpeed - p95, 0.1);
+
+  for (let i = 0; i < trackPoints.length - 1; i++) {
+    const p1 = trackPoints[i];
+    const p2 = trackPoints[i + 1];
+    const speed = p1[2] || 0;
+
+    let color;
+    if (p95 > 0 && speed >= p95) {
+      // 极速段（top 5%）：浅蓝 → 深蓝
+      const t = Math.min((speed - p95) / blueRange, 1);
+      const r = Math.round(120 - t * 90);
+      const g = Math.round(180 - t * 130);
+      const b = Math.round(255 - t * 30);
+      color = `rgb(${r},${g},${b})`;
+    } else {
+      // 红(慢) → 黄(中) → 绿(快)
+      const ratio = Math.min(speed / topSpeed, 1);
+      if (ratio < 0.3) {
+        const r = 227, g = Math.round(60 + ratio / 0.3 * 140), b = 40;
+        color = `rgb(${r},${g},${b})`;
+      } else if (ratio < 0.65) {
+        const t = (ratio - 0.3) / 0.35;
+        const r = Math.round(227 - t * 170), g = 200, b = Math.round(40 + t * 30);
+        color = `rgb(${r},${g},${b})`;
+      } else {
+        const t = (ratio - 0.65) / 0.35;
+        const r = Math.round(57 - t * 20), g = Math.round(200 + t * 55), b = Math.round(70 - t * 50);
+        color = `rgb(${r},${g},${b})`;
+      }
+    }
+
+    const latlngs = [[p1[0], p1[1]], [p2[0], p2[1]]];
+    const seg = L.polyline(latlngs, {
+      color, weight: 4, opacity: 0.9, smoothFactor: 0
+    });
+    speedLayer.addLayer(seg);
+  }
+
+  speedLayer.addTo(map);
+}
+
+/**
+ * 清除速度热力图层，恢复默认折线
+ */
+export function clearSpeedHeatmap() {
+  if (speedLayer) {
+    map.removeLayer(speedLayer);
+    speedLayer = null;
+  }
+  // 恢复所有折线默认样式
+  allPolylines.forEach(l => {
+    l.setStyle({ opacity: 0.7, weight: 3 });
+  });
+}
