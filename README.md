@@ -4,7 +4,7 @@
 
 将 WorkoutDoors / Garmin 等 App 导出的 .fit 骑行文件拖拽到浏览器,自动解析并展示地图路线、骑行数据和分析统计。
 
-![看板截图](screenshot.png)
+![看板截图](docs/screenshot.jpeg)
 
 ##  功能一览
 
@@ -97,6 +97,8 @@ python scripts/process_fit.py ~/Downloads/*.fit
 - **背景**: 5 个预设渐变(落日 / 深空 / 速度 / 清新 / 极简) / 纯色 / 自定义图片
 - **统计项**: 10 项可勾选(距离、用时、均速、极速、均心、最高心、爬升、消耗、圈数、HR 分区)
 - **水印**: 右下角小字「cycling-dashboard · 骑行看板」
+
+![分享图示例](docs/share-sample.png)
 
 ##  配置导出路径(可选)
 
