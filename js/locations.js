@@ -84,7 +84,7 @@ function mostFrequent(arr) {
 }
 
 function detectLocations(rides) {
-  // 从路线名中提取地名（家→王府井 → 家, 王府井）
+  // 从路线名中提取地名（A→B → A, B）
   const points = [];
   for (const r of rides) {
     if (r.start_lat != null) points.push({ lat: r.start_lat, lng: r.start_lng, name: extractStartName(r.route) });

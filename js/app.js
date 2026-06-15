@@ -880,7 +880,7 @@ function buildParsedFromFitFile(data, filename) {
 }
 
 function reverseRouteName(name) {
-  // "家→猁（三环）" → "猁→家（三环）",  "颐和园大圈" → "颐和园大圈"
+  // "A→B（C）" → "B→A（C）",  "X 绕圈" → "X 绕圈"
   const m = name.match(/^(.+)→(.+?)(（.*）)?$/);
   if (m) return m[2] + '→' + m[1] + (m[3] || '');
   return name;
