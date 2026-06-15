@@ -25,7 +25,8 @@ export function initMap(rides, routeColors, onRideClick, getDisplayColor) {
   map = L.map('map', { zoomControl: true }).setView([39.92, 116.35], 12);
   L.tileLayer('https://cartodb-basemaps-{s}.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png', {
     attribution: '&copy; CARTO',
-    maxZoom: 18
+    maxZoom: 18,
+    crossOrigin: 'anonymous',
   }).addTo(map);
 
   rides.forEach((ride, i) => {

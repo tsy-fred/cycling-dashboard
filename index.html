@@ -151,7 +151,7 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://unpkg.com/leaflet-image@0.4.0/leaflet-image.js"></script>
   <script src="js/fit-parser-bundle.js"></script>
-  <script type="module" src="js/app.js?v=9"></script>
+  <script type="module" src="js/app.js?v=11"></script>
 
   <!-- 设置弹窗 -->
   <div class="modal-overlay" id="settingsModal" style="display:none">
@@ -308,50 +308,78 @@
 
   <!-- 图片导出弹窗 -->
   <div class="modal-overlay" id="exportModal" style="display:none">
-    <div class="modal-box" style="max-width:560px">
-      <div class="modal-title"><i data-lucide="image" class="lci"></i> 生成分享图</div>
-      <p class="modal-desc" id="exportModalDesc">选好比例、背景、统计项,点下载导出 PNG。</p>
+    <div class="modal-box exp-box">
+      <div class="exp-header">
+        <div>
+          <div class="modal-title"><i data-lucide="image" class="lci"></i> 生成分享图</div>
+          <p class="modal-desc">选好比例、背景、统计项,点下载导出 PNG</p>
+        </div>
+        <button class="exp-close" id="expClose" title="关闭">×</button>
+      </div>
 
-      <div style="margin-bottom:10px">
-        <div class="exp-label">比例</div>
-        <div class="exp-ratio-tabs" id="expRatioTabs">
-          <button class="exp-ratio-tab active" data-ratio="1:1">1:1 · 1080×1080</button>
-          <button class="exp-ratio-tab" data-ratio="3:4">3:4 · 1080×1440</button>
+      <div class="exp-body">
+        <div class="exp-controls">
+          <section class="exp-section">
+            <div class="exp-section-title"><i data-lucide="ratio" class="lci"></i> 比例</div>
+            <div class="exp-ratio-tabs" id="expRatioTabs">
+              <button class="exp-ratio-tab active" data-ratio="1:1">
+                <div class="exp-ratio-icon exp-ratio-1-1"></div>
+                <div class="exp-ratio-meta"><div class="exp-ratio-label">1:1</div><div class="exp-ratio-size">1080×1080</div></div>
+              </button>
+              <button class="exp-ratio-tab" data-ratio="3:4">
+                <div class="exp-ratio-icon exp-ratio-3-4"></div>
+                <div class="exp-ratio-meta"><div class="exp-ratio-label">3:4</div><div class="exp-ratio-size">1080×1440</div></div>
+              </button>
+            </div>
+          </section>
+
+          <section class="exp-section">
+            <div class="exp-section-title"><i data-lucide="palette" class="lci"></i> 背景</div>
+            <div class="exp-bg-tabs">
+              <button class="exp-bg-tab active" data-bg="preset">预设</button>
+              <button class="exp-bg-tab" data-bg="solid">纯色</button>
+              <button class="exp-bg-tab" data-bg="image">图片</button>
+            </div>
+            <div class="exp-bg-panel" id="expBgPreset">
+              <div class="exp-presets" id="expPresets"></div>
+            </div>
+            <div class="exp-bg-panel" id="expBgSolid" style="display:none">
+              <div class="exp-color-row">
+                <input type="color" id="expSolidColor" value="#1a1a2e">
+                <span class="exp-hint">点色块选背景色</span>
+              </div>
+            </div>
+            <div class="exp-bg-panel" id="expBgImage" style="display:none">
+              <label class="exp-file">
+                <i data-lucide="upload" class="lci"></i> 选择图片
+                <input type="file" accept="image/*" id="expImageInput">
+              </label>
+              <div id="expImageName" class="exp-file-name">未选择</div>
+            </div>
+          </section>
+
+          <section class="exp-section">
+            <div class="exp-section-title">
+              <i data-lucide="bar-chart-2" class="lci"></i> 统计项
+              <span class="exp-section-actions">
+                <button class="exp-link-btn" id="expStatsAll">全选</button>
+                <span class="exp-link-sep">·</span>
+                <button class="exp-link-btn" id="expStatsNone">清空</button>
+              </span>
+            </div>
+            <div class="exp-stats" id="expStats"></div>
+          </section>
+        </div>
+
+        <div class="exp-preview-pane">
+          <div class="exp-preview-label"><i data-lucide="eye" class="lci"></i> 实时预览</div>
+          <div class="exp-preview-wrap">
+            <canvas id="expPreview"></canvas>
+          </div>
         </div>
       </div>
 
-      <div style="margin-bottom:10px">
-        <div class="exp-label">背景</div>
-        <div class="exp-bg-tabs">
-          <button class="exp-bg-tab active" data-bg="preset">预设渐变</button>
-          <button class="exp-bg-tab" data-bg="solid">纯色</button>
-          <button class="exp-bg-tab" data-bg="image">自定义图片</button>
-        </div>
-        <div class="exp-bg-panel" id="expBgPreset">
-          <div class="exp-presets" id="expPresets"></div>
-        </div>
-        <div class="exp-bg-panel" id="expBgSolid" style="display:none">
-          <input type="color" id="expSolidColor" value="#1a1a2e" style="width:60px;height:32px;border:1px solid #ddd;border-radius:6px;cursor:pointer">
-        </div>
-        <div class="exp-bg-panel" id="expBgImage" style="display:none">
-          <input type="file" accept="image/*" id="expImageInput" style="font-size:12px">
-          <div id="expImageName" style="font-size:11px;color:#888;margin-top:4px">未选择</div>
-        </div>
-      </div>
-
-      <div style="margin-bottom:10px">
-        <div class="exp-label">展示统计项 <span style="font-weight:400;color:#aaa;font-size:10px">(勾选要显示的)</span></div>
-        <div class="exp-stats" id="expStats"></div>
-      </div>
-
-      <div style="margin-bottom:10px">
-        <div class="exp-label">预览</div>
-        <div class="exp-preview-wrap">
-          <canvas id="expPreview" width="240" height="240"></canvas>
-        </div>
-      </div>
-
-      <div class="modal-actions">
+      <div class="exp-footer">
         <button class="btn btn-secondary" id="expCancel">取消</button>
         <button class="btn btn-primary" id="expDownload"><i data-lucide="download" class="lci"></i> 下载 PNG</button>
       </div>
