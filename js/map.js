@@ -81,6 +81,8 @@ export function initMap(rides, routeColors, onRideClick, getDisplayColor) {
   });
 }
 
+export function getMap() { return map; }
+
 /**
  * 初始化图例
  * @param {Array} routeOrder - 路线顺序

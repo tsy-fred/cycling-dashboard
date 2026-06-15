@@ -119,3 +119,40 @@ tbody tr.act{background:#edf0f7}
 .btn-secondary:hover{background:#ddd}
 .btn-primary{background:#222;color:#fff}
 .btn-primary:hover{background:#444;opacity:.9}
+.btn-primary:disabled{background:#999;cursor:default;opacity:.6}
+
+/* ── 设置弹窗 分隔 + Strava ── */
+.set-divider{height:1px;background:#e8e8ec;margin:18px 0 14px}
+.strava-sync-btn{display:inline-flex;align-items:center;gap:3px;padding:3px 10px;background:#FC4C02;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;margin-left:6px;vertical-align:middle}
+.strava-sync-btn:hover{background:#e04300}
+.strava-sync-btn:disabled{background:#ccc;cursor:default}
+
+/* ── Strava 向导 ── */
+.strava-step{display:flex;gap:12px;margin-bottom:14px;align-items:flex-start}
+.strava-step-num{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:#FC4C02;color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:13px;margin-top:2px}
+.strava-step-body{flex:1;min-width:0}
+.strava-step-title{font-size:14px;font-weight:600;color:#222;margin-bottom:4px}
+.strava-step-desc{font-size:12px;color:#666;line-height:1.55;margin-bottom:6px}
+.strava-step-form{background:#f8f9fb;border-radius:8px;padding:8px 10px;font-size:12px;color:#444;line-height:1.7}
+.strava-step-form code{font-size:11px;background:#eef0f4;padding:1px 4px;border-radius:3px;font-family:-apple-system,monospace}
+
+/* ── 导出弹窗 ── */
+.exp-label{font-size:11px;font-weight:600;color:#999;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px}
+.exp-ratio-tabs{display:flex;gap:4px;border:1px solid #e8e8ec;border-radius:8px;overflow:hidden}
+.exp-ratio-tab{flex:1;padding:6px;border:none;background:#f8f8fa;color:#888;font-size:12px;cursor:pointer;transition:all .12s}
+.exp-ratio-tab:hover{background:#eee;color:#555}
+.exp-ratio-tab.active{background:#fff;color:#222;font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.exp-bg-tabs{display:flex;gap:4px;margin-bottom:6px}
+.exp-bg-tab{padding:5px 12px;border:1px solid #e8e8ec;border-radius:6px;background:#f8f8fa;color:#888;font-size:12px;cursor:pointer}
+.exp-bg-tab:hover{background:#eee;color:#555}
+.exp-bg-tab.active{background:#222;color:#fff;border-color:#222}
+.exp-bg-panel{margin-top:4px}
+.exp-presets{display:flex;gap:6px}
+.exp-preset{width:60px;height:36px;border:2px solid transparent;border-radius:6px;cursor:pointer;padding:0;transition:border .12s}
+.exp-preset:hover{border-color:#888}
+.exp-preset.active{border-color:#222;box-shadow:0 0 0 2px #fff inset}
+.exp-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;max-height:120px;overflow-y:auto}
+.exp-stat-label{display:flex;align-items:center;gap:4px;padding:4px 6px;border:1px solid #e8e8ec;border-radius:6px;font-size:12px;cursor:pointer;background:#f8f8fa}
+.exp-stat-label:has(input:checked){background:#edf0f7;border-color:#222;color:#222;font-weight:500}
+.exp-preview-wrap{display:flex;justify-content:center;background:#f0f1f4;border-radius:10px;padding:10px}
+#expPreview{border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.08);max-width:100%}

@@ -6,3 +6,12 @@ __pycache__/
 config.json
 dist/
 
+# 个人数据 — 不上传
+data/rides.json
+data/locations.json
+screenshot.png
+CLAUDE.md
+.claude/
+scripts/merge_fit.py
+TODO.md
+

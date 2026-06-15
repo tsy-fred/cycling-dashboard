@@ -7,6 +7,7 @@ import { loadRides } from './storage.js';
 import { initMap, rebuildMapLayers, initLegend, highlightRide, fitRideBounds, placeCrosshair, clearCrosshair, setPolylineStyle, resetPolylineStyles, fitBoundsToPoints, renderLocations, setContextMenuHandler, renderSpeedHeatmap, clearSpeedHeatmap } from './map.js';
 import { initMonthlyChart, renderDetail, renderSelectedHR } from './charts.js';
 import { loadLocations, getLocations, addLocation, removeLocation, renameLocation, findNearestLocation, saveLocations } from './locations.js';
+import { setupExportModal, openShareModal as openShareModalImpl } from './export.js';
 
 const KNOWN_ROUTE_COLORS = {};
 
@@ -57,6 +58,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   initModal();
   initNotes();
   initSettings();
+  setupExportModal();
+  handleStravaUrlFlag();
 });
 
 function getDisplayColor(route) {
@@ -167,6 +170,7 @@ function switchToDetail(title) {
   document.getElementById('detailView').style.display = 'block';
   document.getElementById('leftTitle').style.display = 'none';
   document.getElementById('backBtn').style.display = 'inline-flex';
+  document.getElementById('shareBtn').style.display = 'inline-flex';
   document.getElementById('dTitle').style.display = 'inline';
   document.getElementById('dTitle').innerHTML = title;
 }
@@ -176,6 +180,7 @@ function switchToMonthly() {
   document.getElementById('detailView').style.display = 'none';
   document.getElementById('leftTitle').style.display = 'inline';
   document.getElementById('backBtn').style.display = 'none';
+  document.getElementById('shareBtn').style.display = 'none';
   document.getElementById('dTitle').style.display = 'none';
   document.getElementById('delDetailBtn').style.display = 'none';
   document.getElementById('editDetailBtn').style.display = 'none';
@@ -183,6 +188,11 @@ function switchToMonthly() {
   document.getElementById('selHR').style.display = 'none';
   _currentViewIdx = -1;
 }
+
+window.openShareModal = function() {
+  if (_currentViewIdx < 0) return;
+  openShareModalImpl(_currentViewIdx, () => RIDES[_currentViewIdx]);
+};
 
 window.closeDetail = function() {
   clearSpeedHeatmap();
@@ -538,36 +548,58 @@ function initSettings() {
   const enabled = document.getElementById('obsidianEnabled');
   const pathInput = document.getElementById('obsidianVault');
   const status = document.getElementById('obsidianStatus');
+  const stravaId = document.getElementById('stravaClientId');
+  const stravaSecret = document.getElementById('stravaClientSecret');
+  const stravaStatus = document.getElementById('stravaStatus');
+  const stravaAuto = document.getElementById('stravaAutoSync');
   if (!btn || !modal) return;
+
+  let _currentCfg = {};
 
   btn.addEventListener('click', async () => {
     try {
       const res = await fetch('/config');
       const cfg = await res.json();
+      _currentCfg = cfg;
       const obs = cfg.obsidian || {};
       enabled.checked = obs.enabled || false;
       pathInput.value = obs.vault_path || '';
       status.textContent = obs.enabled && obs.vault_path ? '✅ 已配置' : '⏸️ 未启用';
+      const s = cfg.strava || {};
+      stravaId.value = s.client_id || '';
+      stravaSecret.value = s.client_secret || '';
+      stravaAuto.checked = !!s.auto_sync;
+      stravaStatus.textContent = s.refresh_token
+        ? `✅ 已连接: ${s.athlete || '未知账号'}`
+        : (s.client_id ? '⏸️ 配置了 client_id,点连接完成 OAuth' : '⏸️ 未连接');
     } catch { status.textContent = '❌ 加载失败'; }
     modal.style.display = 'flex';
   });
 
   document.getElementById('settingsSave').onclick = async () => {
-    // 简化：export_path 存到 obsidian.vault_path，sync_obsidian.py 读取它
     const cfg = {
       obsidian: {
         enabled: enabled.checked,
         vault_path: pathInput.value.trim(),
       },
       server: { port: 8080, auto_open_browser: true },
+      strava: {
+        client_id: stravaId.value.trim(),
+        client_secret: stravaSecret.value.trim(),
+        refresh_token: (_currentCfg.strava || {}).refresh_token || '',
+        access_token: (_currentCfg.strava || {}).access_token || '',
+        expires_at: (_currentCfg.strava || {}).expires_at || 0,
+        athlete: (_currentCfg.strava || {}).athlete || '',
+        auto_sync: stravaAuto.checked,
+      },
     };
     await fetch('/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(cfg),
     });
+    _currentCfg = cfg;
     status.textContent = '✅ 已保存';
-    modal.style.display = 'none';
   };
 
   document.getElementById('settingsCancel').onclick = () => { modal.style.display = 'none'; };
@@ -590,7 +622,7 @@ function initSettings() {
       const data = await res.json();
       if (data.path) {
         pathInput.value = data.path + '/骑行记录.md';
-        status.textContent = '✅ 已选择文件夹，文件名默认为 骑行记录.md';
+        status.textContent = '✅ 已选择文件夹,文件名默认为 骑行记录.md';
       } else if (data.error) {
         status.textContent = '❌ ' + data.error;
       }
@@ -598,6 +630,62 @@ function initSettings() {
       status.textContent = '❌ 选择失败';
     }
   });
+
+  // Strava 连接/断开
+  document.getElementById('stravaConnectBtn')?.addEventListener('click', async () => {
+    if (!stravaId.value.trim() || !stravaSecret.value.trim()) {
+      stravaStatus.textContent = '❌ 请先填入 client_id 和 client_secret,点保存';
+      return;
+    }
+    // 先 await 保存配置,再跳,避免竞态
+    const cfg = {
+      obsidian: { enabled: enabled.checked, vault_path: pathInput.value.trim() },
+      server: { port: 8080, auto_open_browser: true },
+      strava: {
+        client_id: stravaId.value.trim(),
+        client_secret: stravaSecret.value.trim(),
+        refresh_token: (_currentCfg.strava || {}).refresh_token || '',
+        access_token: (_currentCfg.strava || {}).access_token || '',
+        expires_at: (_currentCfg.strava || {}).expires_at || 0,
+        athlete: (_currentCfg.strava || {}).athlete || '',
+        auto_sync: stravaAuto.checked,
+      },
+    };
+    await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg) });
+    _currentCfg = cfg;
+    stravaStatus.textContent = '⏳ 跳到 Strava 授权…';
+    window.location.href = '/strava/connect';
+  });
+
+  document.getElementById('stravaDisconnectBtn')?.addEventListener('click', async () => {
+    if (!confirm('确定断开 Strava 连接?(不会删除 Strava 上的活动)')) return;
+    await fetch('/strava/disconnect', { method: 'POST' });
+    _currentCfg.strava = (_currentCfg.strava || {});
+    _currentCfg.strava.refresh_token = '';
+    _currentCfg.strava.athlete = '';
+    stravaStatus.textContent = '⏸️ 已断开';
+  });
+
+  // 首次使用向导
+  const helpModal = document.getElementById('stravaHelpModal');
+  document.getElementById('stravaHelpBtn')?.addEventListener('click', () => {
+    helpModal.style.display = 'flex';
+  });
+  document.getElementById('stravaHelpClose')?.addEventListener('click', () => {
+    helpModal.style.display = 'none';
+  });
+  helpModal?.addEventListener('click', (e) => { if (e.target === helpModal) helpModal.style.display = 'none'; });
+}
+
+// 检查 URL 是否有 ?strava=connected 这种回调标记
+function handleStravaUrlFlag() {
+  const params = new URLSearchParams(location.search);
+  if (params.get('strava') === 'connected') {
+    showStatus('✅ Strava 已连接', 'ok');
+    setTimeout(() => showStatus('点击或拖拽 .fit 文件到此处上传', 'info'), 3000);
+    // 清理 URL
+    history.replaceState(null, '', location.pathname);
+  }
 }
 
 function initUpload() {
@@ -866,8 +954,9 @@ function finishUploadWithName(name) { if (!pendingUploadData) return; pendingUpl
 async function finalizeUpload(parsed, file) {
   const ride = buildRideObject(parsed, file.name);
   await addRideToDashboard(ride);
+  let base64 = null;
   if (file instanceof File) {
-    const base64 = await new Promise((resolve, reject) => {
+    base64 = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result.split(',')[1]);
       reader.onerror = reject;
@@ -879,8 +968,76 @@ async function finalizeUpload(parsed, file) {
       console.warn('保存失败:', e);
     }
   }
-  showStatus(`✅ ${file.name} 解析成功！${parsed.distance_km}km，${parsed.date} · ${ride.route}`, 'ok');
-  setTimeout(() => showStatus('点击或拖拽 .fit 文件到此处上传', 'info'), 5000);
+  // Strava 同步(连接了再说)
+  let stravaHint = '';
+  if (base64) {
+    try {
+      const cfg = await fetch('/config').then(r => r.json());
+      const s = cfg.strava || {};
+      if (s.refresh_token) {
+        if (s.auto_sync) {
+          // 静默上传
+          syncToStrava(base64, ride, file.name).then(msg => {
+            if (msg) showStatus(`✅ ${file.name} 解析成功！${parsed.distance_km}km · ${msg}`, 'ok');
+            setTimeout(() => showStatus('点击或拖拽 .fit 文件到此处上传', 'info'), 6000);
+          });
+        } else {
+          // 显示按钮
+          stravaHint = ` <button class="strava-sync-btn" id="stravaSyncBtn_${ride.id}"><i data-lucide="upload-cloud" class="lci"></i> 同步到 Strava</button>`;
+        }
+      } else if (s.client_id) {
+        stravaHint = ' <a href="#" id="stravaHint_' + ride.id + '" style="color:#FC4C02;font-size:12px">连接 Strava 以同步</a>';
+      }
+    } catch {}
+  }
+  showStatus(`✅ ${file.name} 解析成功！${parsed.distance_km}km，${parsed.date} · ${ride.route}${stravaHint}`, 'ok');
+  if (stravaHint && stravaHint.includes('button')) {
+    const btn = document.getElementById('stravaSyncBtn_' + ride.id);
+    if (btn) {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        btn.disabled = true;
+        btn.textContent = '⏳ 上传中…';
+        const msg = await syncToStrava(base64, ride, file.name);
+        btn.textContent = msg || '✅ 已上传';
+        if (window.lucide) lucide.createIcons();
+        setTimeout(() => showStatus('点击或拖拽 .fit 文件到此处上传', 'info'), 5000);
+      });
+    }
+  }
+  if (window.lucide) lucide.createIcons();
+  if (!stravaHint) {
+    setTimeout(() => showStatus('点击或拖拽 .fit 文件到此处上传', 'info'), 5000);
+  }
+}
+
+async function syncToStrava(base64, ride, filename) {
+  try {
+    const ext = `${ride.date}T${ride.start_time || '00:00'}:00`;
+    const res = await fetch('/strava/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        file_base64: base64,
+        external_id: ext,
+        name: `${ride.date} ${ride.route}`,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) return `❌ Strava: ${data.error || '上传失败'}`;
+    const uploadId = data.upload_id;
+    // 轮询状态(最多 30 秒,实际 Strava 处理通常 1~10 秒)
+    for (let i = 0; i < 15; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      const sr = await fetch('/strava/status/' + uploadId);
+      const sd = await sr.json();
+      if (sd.status === 'Your activity is ready.') return '✅ Strava 已同步';
+      if (sd.error) return `❌ Strava 处理错误: ${sd.error}`;
+    }
+    return '⏳ Strava 处理中,稍后在 Strava 端查看';
+  } catch (e) {
+    return '❌ Strava 同步失败: ' + e.message;
+  }
 }
 
 function buildRideObject(parsed, filename) {
