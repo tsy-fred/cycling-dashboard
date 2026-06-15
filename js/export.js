@@ -86,87 +86,20 @@ function _isLightColor(hex) {
   return (0.299 * r + 0.587 * g + 0.114 * b) > 160;
 }
 
-// ── 液态玻璃 (Apple-style frosted glass) ──
-
-function _drawGlassPanel(ctx, x, y, w, h, radius, isLight) {
-  ctx.save();
-  // 外阴影
-  ctx.shadowColor = 'rgba(0,0,0,0.22)';
-  ctx.shadowBlur = 28;
-  ctx.shadowOffsetY = 10;
-  // 底色(深色:半透白;浅色:半透奶白)
-  ctx.fillStyle = isLight ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.16)';
-  _roundRect(ctx, x, y, w, h, radius);
-  ctx.fill();
-  // 清掉阴影画描边
-  ctx.shadowColor = 'transparent';
-  // 1px 外描边
-  ctx.strokeStyle = isLight ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.22)';
-  ctx.lineWidth = 1;
-  _roundRect(ctx, x, y, w, h, radius);
-  ctx.stroke();
-  // 顶部高光(从顶向下的渐变,模拟上方来光)
-  ctx.save();
-  _roundRect(ctx, x, y, w, h, radius);
-  ctx.clip();
-  const hl = ctx.createLinearGradient(0, y, 0, y + h * 0.55);
-  hl.addColorStop(0, isLight ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.14)');
-  hl.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = hl;
-  ctx.fillRect(x, y, w, h * 0.55);
-  ctx.restore();
-  ctx.restore();
-}
-
-function _applyTextShadow(ctx, isLight) {
-  // 深色背景 → 黑色阴影;浅色背景 → 白色阴影
-  ctx.shadowColor = isLight ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.45)';
-  ctx.shadowBlur = 10;
-  ctx.shadowOffsetY = 2;
-}
-
-function _clearShadow(ctx) {
-  ctx.shadowColor = 'transparent';
-  ctx.shadowBlur = 0;
-  ctx.shadowOffsetY = 0;
-}
-
 function drawTrackInto(ctx, ride, x, y, w, h, isLight) {
-  // 1) 玻璃面板(自带阴影 + 顶高光 + 描边)
-  const r = 16;
-  _drawGlassPanel(ctx, x, y, w, h, r, isLight);
-
-  // 2) 裁切到面板内,画内底色 + 轨迹
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-  ctx.clip();
-
-  // 内底色:浅色背景让玻璃更显(深色背景让轨迹线跳出)
-  ctx.fillStyle = isLight ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.22)';
-  ctx.fillRect(x, y, w, h);
-
   const pts = ride.track_points;
   if (!pts || pts.length < 2) {
-    _applyTextShadow(ctx, isLight);
-    ctx.fillStyle = isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.7)';
+    ctx.fillStyle = isLight ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.65)';
     ctx.font = '500 22px -apple-system, "PingFang SC", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('无轨迹数据', x + w / 2, y + h / 2);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    _clearShadow(ctx);
-    ctx.restore();
     return;
   }
 
-  // 计算 lat/lng 边界
+  // lat/lng 边界 → 等距投影
   let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
   for (const [lat, lng] of pts) {
     if (lat == null || lng == null) continue;
@@ -191,13 +124,14 @@ function drawTrackInto(ctx, ride, x, y, w, h, isLight) {
   const first = pts.find(p => p[0] != null && p[1] != null);
   const last = [...pts].reverse().find(p => p[0] != null && p[1] != null);
 
-  // 轨迹主线 + 一层描边让浅色路线也能看清
   const poly = getPolyline(_state.currentRideIndex);
   const routeColor = (poly && poly.options && poly.options.color) || '#4ECDC4';
-  ctx.strokeStyle = isLight ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.35)';
-  ctx.lineWidth = 8;
+
+  // 描边(让线在任何背景都看得见,本身不是面板)
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  ctx.strokeStyle = isLight ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.32)';
+  ctx.lineWidth = 8;
   ctx.beginPath();
   let started = false;
   for (const [lat, lng] of pts) {
@@ -207,6 +141,8 @@ function drawTrackInto(ctx, ride, x, y, w, h, isLight) {
     else ctx.lineTo(px, py);
   }
   ctx.stroke();
+
+  // 主线
   ctx.strokeStyle = routeColor;
   ctx.lineWidth = 5;
   ctx.beginPath();
@@ -218,9 +154,8 @@ function drawTrackInto(ctx, ride, x, y, w, h, isLight) {
     else ctx.lineTo(px, py);
   }
   ctx.stroke();
-  ctx.restore();
 
-  // 起终点 (在面板外画,带白底圈)
+  // 起终点 (在画线之外,带白底圈)
   if (first) {
     const [sx, sy] = project(first[0], first[1]);
     _drawDot(ctx, sx, sy, '#4ECDC4', '起');
@@ -253,30 +188,20 @@ function _drawDot(ctx, x, y, color, label) {
 
 function drawTitle(ctx, ride, w, isLight) {
   const fg = isLight ? '#222' : '#fff';
-  const fgSub = isLight ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.85)';
-  const chipFg = isLight ? '#222' : '#fff';
+  const fgSub = isLight ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.78)';
 
-  // 日期 chip — 玻璃 pill
-  const dateText = ride.date || '';
-  ctx.font = '600 18px -apple-system, "PingFang SC", sans-serif';
-  const dateW = ctx.measureText(dateText).width;
-  const chipPadX = 16, chipH = 36;
-  const chipX = 60, chipY = 56;
-  _drawGlassPanel(ctx, chipX, chipY, dateW + chipPadX * 2, chipH, chipH / 2, isLight);
-  _applyTextShadow(ctx, isLight);
-  ctx.fillStyle = chipFg;
-  ctx.textBaseline = 'middle';
-  ctx.textAlign = 'left';
-  ctx.fillText(dateText, chipX + chipPadX, chipY + chipH / 2 + 1);
-  _clearShadow(ctx);
-
-  // 路线名 (大标题,带阴影)
+  // 日期
+  ctx.fillStyle = fgSub;
+  ctx.font = '600 20px -apple-system, "PingFang SC", sans-serif';
   ctx.textBaseline = 'top';
+  ctx.textAlign = 'left';
+  ctx.fillText(ride.date || '', 60, 56);
+
+  // 路线名
   ctx.fillStyle = fg;
   ctx.font = '700 64px -apple-system, "PingFang SC", sans-serif';
   const title = ride.route || '骑行';
-  _applyTextShadow(ctx, isLight);
-  ctx.fillText(title, 60, 114);
+  ctx.fillText(title, 60, 90);
 
   // 时间 · 距离
   ctx.font = '500 22px -apple-system, "PingFang SC", sans-serif';
@@ -284,37 +209,32 @@ function drawTitle(ctx, ride, w, isLight) {
   const dist = ride.distance_km ? `${ride.distance_km} km` : '';
   const tm = ride.start_time ? `${ride.start_time}${ride.end_time ? ' - ' + ride.end_time : ''}` : '';
   const sub = [dist, tm].filter(Boolean).join('  ·  ');
-  ctx.fillText(sub, 60, 200);
-  _clearShadow(ctx);
+  ctx.fillText(sub, 60, 178);
 }
 
 function drawBrandMark(ctx, w, h, isLight) {
-  // 右上角小品牌玻璃 pill
-  const pillW = 168, pillH = 56;
-  const x = w - 60 - pillW, y = 50;
-  _drawGlassPanel(ctx, x, y, pillW, pillH, pillH / 2, isLight);
-  // 文字
-  _applyTextShadow(ctx, isLight);
+  // 右上角小字品牌
+  ctx.fillStyle = isLight ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.55)';
+  ctx.font = '600 16px -apple-system, "PingFang SC", sans-serif';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'top';
+  ctx.fillText('cycling · dashboard', w - 60, 62);
   ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  const cx = x + 24;
-  ctx.fillStyle = isLight ? '#0a0a0a' : '#fff';
-  ctx.font = '700 22px -apple-system, "PingFang SC", sans-serif';
-  ctx.fillText('cycling', cx, y + pillH / 2 - 9);
-  ctx.fillStyle = isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.7)';
-  ctx.font = '500 14px -apple-system, "PingFang SC", sans-serif';
-  ctx.fillText('dashboard', cx, y + pillH / 2 + 13);
-  _clearShadow(ctx);
 }
 
 function drawStatCard(ctx, x, y, w, h, val, unit, label, isLight) {
   const fg = isLight ? '#222' : '#fff';
-  const fgSub = isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.75)';
+  const fgSub = isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.7)';
   const r = 14;
-  _drawGlassPanel(ctx, x, y, w, h, r, isLight);
+  // 简单圆角卡片(深色:半透黑;浅色:半透白)
+  ctx.fillStyle = isLight ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.2)';
+  _roundRect(ctx, x, y, w, h, r);
+  ctx.fill();
+  ctx.strokeStyle = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1;
+  _roundRect(ctx, x, y, w, h, r);
+  ctx.stroke();
 
-  // value + unit (top) + label (bottom),统一加阴影
-  _applyTextShadow(ctx, isLight);
   ctx.fillStyle = fg;
   ctx.font = '700 30px -apple-system, "PingFang SC", sans-serif';
   ctx.textBaseline = 'top';
@@ -329,7 +249,6 @@ function drawStatCard(ctx, x, y, w, h, val, unit, label, isLight) {
   ctx.fillStyle = fgSub;
   ctx.font = '500 12px -apple-system, "PingFang SC", sans-serif';
   ctx.fillText(label.toUpperCase(), x + 14, y + h - 22);
-  _clearShadow(ctx);
 }
 
 function drawStats(ctx, ride, w, h, isLight) {
@@ -366,38 +285,31 @@ function drawStats(ctx, ride, w, h, isLight) {
     drawStatCard(ctx, x, y, cellW, cardH, v, s.unit, s.label, isLight);
   });
 
-  // HR 分区 (5 个独立 chip,玻璃面板 + 顶部色块 + 标签 + 百分比)
+  // HR 分区(单条彩色 bar,按比例分段 + 下方 Z1-Z5 标签)
   if (zoneItem) {
     const z = getZonesArray(ride);
     const labels = ['Z1', 'Z2', 'Z3', 'Z4', 'Z5'];
     const y = gridTop + rows * (cardH + gap) + 4;
     const totalW = w - 120;
-    const chipGap = 10;
-    const chipW = (totalW - chipGap * 4) / 5;
-    const chipH = 70;
-    const colorH = 12;
+    const barH = 14;
+    let cur = 60;
     z.forEach((pct, i) => {
-      const cx = 60 + i * (chipW + chipGap);
-      _drawGlassPanel(ctx, cx, y, chipW, chipH, 12, isLight);
-      // 顶部色块
-      ctx.save();
-      _roundRect(ctx, cx + 8, y + 8, chipW - 16, colorH, colorH / 2);
-      ctx.clip();
+      if (!pct) return;
+      const wseg = totalW * (pct / 100);
       ctx.fillStyle = HR_COLORS[i];
-      ctx.fillRect(cx + 8, y + 8, chipW - 16, colorH);
-      ctx.restore();
-      // 标签
-      _applyTextShadow(ctx, isLight);
-      ctx.fillStyle = isLight ? '#0a0a0a' : '#fff';
-      ctx.font = '700 13px -apple-system, "PingFang SC", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillText(labels[i], cx + chipW / 2, y + 26);
-      // 百分比
-      ctx.font = '700 20px -apple-system, "PingFang SC", sans-serif';
-      ctx.fillText(pct.toFixed(0) + '%', cx + chipW / 2, y + 42);
-      _clearShadow(ctx);
-      ctx.textAlign = 'left';
+      ctx.fillRect(cur, y, wseg, barH);
+      cur += wseg;
+    });
+    // 下方 label 行
+    ctx.font = '500 13px -apple-system, "PingFang SC", sans-serif';
+    ctx.fillStyle = isLight ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.78)';
+    ctx.textBaseline = 'top';
+    let curLabel = 60;
+    z.forEach((pct, i) => {
+      const wseg = totalW * (pct / 100);
+      if (wseg < 4) return;
+      ctx.fillText(`${labels[i]} ${pct.toFixed(0)}%`, curLabel, y + barH + 4);
+      curLabel += wseg;
     });
   }
 }
@@ -453,7 +365,7 @@ function renderTo(ctx, ride, W, H) {
   const isLight = renderBackground(ctx, W, H);
   drawTitle(ctx, ride, W, isLight);
   drawBrandMark(ctx, W, H, isLight);
-  const titleH = 256;
+  const titleH = 220;
   const mapX = 60, mapY = titleH;
   const mapW = W - 120, mapH = SIZES[_state.ratio].mapH - titleH + 60;
   drawTrackInto(ctx, ride, mapX, mapY, mapW, mapH, isLight);
