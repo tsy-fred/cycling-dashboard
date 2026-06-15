@@ -33,12 +33,11 @@ export function initMap(rides, routeColors, onRideClick, getDisplayColor) {
     const pts = ride.track_points.map(p => [p[0], p[1]]);
     const baseColor = routeColors[ride.route] || '#666';
     const color = getDisplayColor ? getDisplayColor(ride.route) : baseColor;
-    const isDash = ride.route && (ride.route.includes('（南二环）') || ride.route.includes('（长安街）'));
     const poly = L.polyline(pts, {
       color,
       weight: 3,
       opacity: 0.7,
-      dashArray: isDash ? '7,5' : null
+      dashArray: ride.dash ? '7,5' : null
     });
     poly.ri = i;
 
@@ -134,12 +133,11 @@ export function rebuildMapLayers(rides, routeColors, onRideClick, getDisplayColo
     if (!ride.track_points || ride.track_points.length < 2) return;
     const pts = ride.track_points.map(p => [p[0], p[1]]);
     const color = routeColors[ride.route] || '#666';
-    const isDash = ride.route && (ride.route.includes('（南二环）') || ride.route.includes('（长安街）'));
     const poly = L.polyline(pts, {
       color,
       weight: 3,
       opacity: 0.7,
-      dashArray: isDash ? '7,5' : null
+      dashArray: ride.dash ? '7,5' : null
     });
     poly.ri = i;
 
