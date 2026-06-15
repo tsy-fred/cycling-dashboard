@@ -34,6 +34,7 @@ let _sortCol = 'date';
 let _sortAsc = false;
 let _rsSortCol = null;
 let _rsSortAsc = true;
+let _statsScope = localStorage.getItem('cycling-dashboard:statsScope') || 'all';
 
 // 初始化 Lucide 图标
 if (window.lucide) lucide.createIcons();
@@ -59,8 +60,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   initNotes();
   initSettings();
   setupExportModal();
+  initStatsTabs();
   handleStravaUrlFlag();
 });
+
+function initStatsTabs() {
+  document.querySelectorAll('#statsTabs .sv-tab').forEach(tab => {
+    if (tab.dataset.scope === _statsScope) tab.classList.add('active');
+    tab.addEventListener('click', () => {
+      _statsScope = tab.dataset.scope;
+      localStorage.setItem('cycling-dashboard:statsScope', _statsScope);
+      document.querySelectorAll('#statsTabs .sv-tab').forEach(t => t.classList.toggle('active', t.dataset.scope === _statsScope));
+      initStats();
+    });
+  });
+}
 
 function getDisplayColor(route) {
   const base = RC[route] || '#666';
@@ -103,19 +117,22 @@ function initAchievements() {
 }
 
 function initStats() {
-  const t = RIDES.length;
-  const d = RIDES.reduce((s, r) => s + (r.distance_km || 0), 0);
-  const e = RIDES.reduce((s, r) => s + (r.elev_gain_m || 0), 0);
   const now = new Date();
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const m = RIDES.filter(r => r.date && r.date.startsWith(thisMonth));
-  const md = m.reduce((s, r) => s + (r.distance_km || 0), 0);
+  const rides = _statsScope === 'month' ? RIDES.filter(r => r.date && r.date.startsWith(thisMonth)) : RIDES;
+  const prefix = _statsScope === 'month' ? '本月' : '总';
+  const t = rides.length;
+  const d = rides.reduce((s, r) => s + (r.distance_km || 0), 0);
+  const e = rides.reduce((s, r) => s + (r.elev_gain_m || 0), 0);
+  const tm = rides.reduce((s, r) => s + (r.moving_time_min || 0), 0);
+  const avgSpd = d > 0 && tm > 0 ? d / (tm / 60) : 0;
+  const hrs = (tm / 60);
   document.getElementById('stats').innerHTML =
-    `<div class="b"><div class="n">${t}</div><div class="l">总骑行</div></div>` +
-    `<div class="b"><div class="n">${d.toFixed(1)}</div><div class="l">总里程 km</div></div>` +
-    `<div class="b"><div class="n">${e}</div><div class="l">总爬升 m</div></div>` +
-    `<div class="b"><div class="n">${m.length}</div><div class="l">本月次数</div></div>` +
-    `<div class="b"><div class="n">${md.toFixed(1)}</div><div class="l">本月 km</div></div>`;
+    `<div class="b"><div class="n">${t}</div><div class="l">${prefix}次数</div></div>` +
+    `<div class="b"><div class="n">${d.toFixed(1)}</div><div class="l">${prefix}里程 km</div></div>` +
+    `<div class="b"><div class="n">${e}</div><div class="l">${prefix}爬升 m</div></div>` +
+    `<div class="b"><div class="n">${avgSpd.toFixed(1)}</div><div class="l">${prefix}均速 km/h</div></div>` +
+    `<div class="b"><div class="n">${hrs.toFixed(1)}</div><div class="l">${prefix}时长 h</div></div>`;
 }
 
 function getSortValue(r, col) {
