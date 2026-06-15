@@ -662,6 +662,8 @@ function initSettings() {
     await fetch('/strava/disconnect', { method: 'POST' });
     _currentCfg.strava = (_currentCfg.strava || {});
     _currentCfg.strava.refresh_token = '';
+    _currentCfg.strava.access_token = '';
+    _currentCfg.strava.expires_at = 0;
     _currentCfg.strava.athlete = '';
     stravaStatus.textContent = '⏸️ 已断开';
   });

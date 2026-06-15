@@ -30,7 +30,10 @@ export function initMap(rides, routeColors, onRideClick, getDisplayColor) {
   }).addTo(map);
 
   rides.forEach((ride, i) => {
-    if (!ride.track_points || ride.track_points.length < 2) return;
+    if (!ride.track_points || ride.track_points.length < 2) {
+      allPolylines.push(null);
+      return;
+    }
     const pts = ride.track_points.map(p => [p[0], p[1]]);
     const baseColor = routeColors[ride.route] || '#666';
     const color = getDisplayColor ? getDisplayColor(ride.route) : baseColor;
@@ -131,7 +134,10 @@ export function rebuildMapLayers(rides, routeColors, onRideClick, getDisplayColo
 
   // 重新添加所有路线
   rides.forEach((ride, i) => {
-    if (!ride.track_points || ride.track_points.length < 2) return;
+    if (!ride.track_points || ride.track_points.length < 2) {
+      allPolylines.push(null);
+      return;
+    }
     const pts = ride.track_points.map(p => [p[0], p[1]]);
     const color = routeColors[ride.route] || '#666';
     const poly = L.polyline(pts, {
@@ -182,11 +188,12 @@ export function rebuildMapLayers(rides, routeColors, onRideClick, getDisplayColo
 }
 
 /**
- * 高亮指定骑行线路
+ * 高亮指定骑行线路(按 ride index 匹配,避免缺轨迹的 ride 错位)
  */
 export function highlightRide(i) {
-  allPolylines.forEach((l, j) => {
-    if (j === i) {
+  allPolylines.forEach(l => {
+    if (!l) return;
+    if (l.ri === i) {
       l.setStyle({ weight: 5, opacity: 1 });
       l.bringToFront();
     } else {
@@ -255,7 +262,7 @@ export function setPolylineStyle(i, style) {
  */
 export function resetPolylineStyles() {
   allPolylines.forEach(l => {
-    l.setStyle({ weight: 3, opacity: 0.7 });
+    if (l) l.setStyle({ weight: 3, opacity: 0.7 });
   });
 }
 
@@ -432,6 +439,7 @@ export function clearSpeedHeatmap() {
   }
   // 恢复所有折线默认样式
   allPolylines.forEach(l => {
+    if (!l) return;
     l.setStyle({ opacity: 0.7, weight: 3 });
   });
 }

@@ -33,10 +33,11 @@ const _state = {
   bgType: 'preset',
   presetIdx: 0,
   solidColor: '#1a1a2e',
-  imageDataUrl: null,
+  _imageEl: null,
   imageName: '',
   stats: [...DEFAULT_STATS],
   getRide: null,
+  currentRideIndex: -1,
 };
 
 const SIZES = {
@@ -107,6 +108,16 @@ function drawTrackInto(ctx, ride, x, y, w, h, isLight) {
     if (lat > maxLat) maxLat = lat;
     if (lng < minLng) minLng = lng;
     if (lng > maxLng) maxLng = lng;
+  }
+  if (minLat === Infinity) {
+    ctx.fillStyle = isLight ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.65)';
+    ctx.font = '500 22px -apple-system, "PingFang SC", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('无轨迹数据', x + w / 2, y + h / 2);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    return;
   }
   const lonR = Math.max(maxLng - minLng, 0.0001);
   const latR = Math.max(maxLat - minLat, 0.0001);
@@ -261,7 +272,8 @@ function drawStats(ctx, ride, w, h, isLight) {
   const normalItems = items.filter(s => !s.isZones);
   const zoneItem = items.find(s => s.isZones);
   const rows = Math.ceil(normalItems.length / cols) || 0;
-  const statTopY = h - 220;
+  // 行数多了就往上挪,避免 HR chip 出画布
+  const statTopY = h - 220 - Math.max(0, rows - 1) * 80;
 
   // 标题
   ctx.fillStyle = isLight ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.6)';
@@ -285,32 +297,41 @@ function drawStats(ctx, ride, w, h, isLight) {
     drawStatCard(ctx, x, y, cellW, cardH, v, s.unit, s.label, isLight);
   });
 
-  // HR 分区(单条彩色 bar,按比例分段 + 下方 Z1-Z5 标签)
+  // HR 分区 — 5 个独立 chip(标签 + 百分比)
   if (zoneItem) {
     const z = getZonesArray(ride);
     const labels = ['Z1', 'Z2', 'Z3', 'Z4', 'Z5'];
-    const y = gridTop + rows * (cardH + gap) + 4;
-    const totalW = w - 120;
-    const barH = 14;
-    let cur = 60;
+    const chipGap = 8;
+    const chipW = (w - 120 - chipGap * 4) / 5;
+    const chipH = 50;
+    const chipY = gridTop + rows * (cardH + gap) + 4;
+    const panelFill = isLight ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.2)';
+    const panelStroke = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)';
+
     z.forEach((pct, i) => {
-      if (!pct) return;
-      const wseg = totalW * (pct / 100);
+      const cx = 60 + i * (chipW + chipGap);
+      // 卡底
+      _roundRect(ctx, cx, chipY, chipW, chipH, 8);
+      ctx.fillStyle = panelFill;
+      ctx.fill();
+      ctx.strokeStyle = panelStroke;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // 左侧色条
       ctx.fillStyle = HR_COLORS[i];
-      ctx.fillRect(cur, y, wseg, barH);
-      cur += wseg;
+      _roundRect(ctx, cx, chipY, 4, chipH, 2);
+      ctx.fill();
+      // 标签 + 百分比
+      ctx.fillStyle = isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.65)';
+      ctx.font = '700 11px -apple-system, "PingFang SC", sans-serif';
+      ctx.textBaseline = 'top';
+      ctx.textAlign = 'left';
+      ctx.fillText(labels[i], cx + 12, chipY + 8);
+      ctx.fillStyle = isLight ? '#222' : '#fff';
+      ctx.font = '700 18px -apple-system, "PingFang SC", sans-serif';
+      ctx.fillText(`${(pct || 0).toFixed(0)}%`, cx + 12, chipY + 24);
     });
-    // 下方 label 行
-    ctx.font = '500 13px -apple-system, "PingFang SC", sans-serif';
-    ctx.fillStyle = isLight ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.78)';
-    ctx.textBaseline = 'top';
-    let curLabel = 60;
-    z.forEach((pct, i) => {
-      const wseg = totalW * (pct / 100);
-      if (wseg < 4) return;
-      ctx.fillText(`${labels[i]} ${pct.toFixed(0)}%`, curLabel, y + barH + 4);
-      curLabel += wseg;
-    });
+    ctx.textAlign = 'left';
   }
 }
 
@@ -340,24 +361,22 @@ function _roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-async function compose(ride, preview = false) {
+function compose(ride, preview = false) {
   if (!ride) return null;
   const cfg = SIZES[_state.ratio];
   const W = cfg.w, H = cfg.h;
   const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
   if (preview) {
     const previewScale = 0.22;
     canvas.width = Math.round(W * previewScale);
     canvas.height = Math.round(H * previewScale);
-    const ctx = canvas.getContext('2d');
     ctx.scale(previewScale, previewScale);
-    renderTo(ctx, ride, W, H);
   } else {
     canvas.width = W;
     canvas.height = H;
-    const ctx = canvas.getContext('2d');
-    renderTo(ctx, ride, W, H);
   }
+  renderTo(ctx, ride, W, H);
   return canvas;
 }
 
@@ -376,15 +395,20 @@ function renderTo(ctx, ride, W, H) {
 function refreshPreview() {
   const ride = _state.getRide ? _state.getRide() : null;
   if (!ride) return;
-  compose(ride, true).then(canvas => {
-    if (!canvas) return;
-    const preview = document.getElementById('expPreview');
-    if (preview) {
-      const pctx = preview.getContext('2d');
-      pctx.clearRect(0, 0, preview.width, preview.height);
-      pctx.drawImage(canvas, 0, 0, preview.width, preview.height);
-    }
-  });
+  const canvas = compose(ride, true);
+  if (!canvas) return;
+  const preview = document.getElementById('expPreview');
+  if (!preview) return;
+  // 让预览 canvas 与导出图同比例,避免 3:4 被压扁
+  const maxW = 280, maxH = 320;
+  const scale = Math.min(maxW / canvas.width, maxH / canvas.height);
+  preview.width = Math.round(canvas.width * scale);
+  preview.height = Math.round(canvas.height * scale);
+  preview.style.width = preview.width + 'px';
+  preview.style.height = preview.height + 'px';
+  const pctx = preview.getContext('2d');
+  pctx.clearRect(0, 0, preview.width, preview.height);
+  pctx.drawImage(canvas, 0, 0, preview.width, preview.height);
 }
 
 export function openShareModal(rideIndex, getRide) {
@@ -452,7 +476,6 @@ export function setupExportModal() {
     document.getElementById('expImageName').textContent = file.name;
     const reader = new FileReader();
     reader.onload = () => {
-      _state.imageDataUrl = reader.result;
       const img = new Image();
       img.onload = () => { _state._imageEl = img; refreshPreview(); };
       img.src = reader.result;
@@ -503,7 +526,7 @@ export function setupExportModal() {
     btn.innerHTML = '<i data-lucide="loader" class="lci"></i> 渲染中…';
     if (window.lucide) window.lucide.createIcons();
     try {
-      const canvas = await compose(ride, false);
+      const canvas = compose(ride, false);
       if (!canvas) throw new Error('渲染失败');
       let dataUrl;
       try {
