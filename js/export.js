@@ -86,9 +86,57 @@ function _isLightColor(hex) {
   return (0.299 * r + 0.587 * g + 0.114 * b) > 160;
 }
 
-function drawTrackInto(ctx, ride, x, y, w, h) {
-  // 圆角面板
+// ── 液态玻璃 (Apple-style frosted glass) ──
+
+function _drawGlassPanel(ctx, x, y, w, h, radius, isLight) {
+  ctx.save();
+  // 外阴影
+  ctx.shadowColor = 'rgba(0,0,0,0.22)';
+  ctx.shadowBlur = 28;
+  ctx.shadowOffsetY = 10;
+  // 底色(深色:半透白;浅色:半透奶白)
+  ctx.fillStyle = isLight ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.16)';
+  _roundRect(ctx, x, y, w, h, radius);
+  ctx.fill();
+  // 清掉阴影画描边
+  ctx.shadowColor = 'transparent';
+  // 1px 外描边
+  ctx.strokeStyle = isLight ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.22)';
+  ctx.lineWidth = 1;
+  _roundRect(ctx, x, y, w, h, radius);
+  ctx.stroke();
+  // 顶部高光(从顶向下的渐变,模拟上方来光)
+  ctx.save();
+  _roundRect(ctx, x, y, w, h, radius);
+  ctx.clip();
+  const hl = ctx.createLinearGradient(0, y, 0, y + h * 0.55);
+  hl.addColorStop(0, isLight ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.14)');
+  hl.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = hl;
+  ctx.fillRect(x, y, w, h * 0.55);
+  ctx.restore();
+  ctx.restore();
+}
+
+function _applyTextShadow(ctx, isLight) {
+  // 深色背景 → 黑色阴影;浅色背景 → 白色阴影
+  ctx.shadowColor = isLight ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.45)';
+  ctx.shadowBlur = 10;
+  ctx.shadowOffsetY = 2;
+}
+
+function _clearShadow(ctx) {
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+}
+
+function drawTrackInto(ctx, ride, x, y, w, h, isLight) {
+  // 1) 玻璃面板(自带阴影 + 顶高光 + 描边)
   const r = 16;
+  _drawGlassPanel(ctx, x, y, w, h, r, isLight);
+
+  // 2) 裁切到面板内,画内底色 + 轨迹
   ctx.save();
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -99,86 +147,88 @@ function drawTrackInto(ctx, ride, x, y, w, h) {
   ctx.closePath();
   ctx.clip();
 
-  // 面板底色
-  ctx.fillStyle = 'rgba(255,255,255,0.07)';
+  // 内底色:浅色背景让玻璃更显(深色背景让轨迹线跳出)
+  ctx.fillStyle = isLight ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.22)';
   ctx.fillRect(x, y, w, h);
 
   const pts = ride.track_points;
   if (!pts || pts.length < 2) {
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    _applyTextShadow(ctx, isLight);
+    ctx.fillStyle = isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.7)';
     ctx.font = '500 22px -apple-system, "PingFang SC", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('无轨迹数据', x + w / 2, y + h / 2 - 11);
+    ctx.textBaseline = 'middle';
+    ctx.fillText('无轨迹数据', x + w / 2, y + h / 2);
     ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    _clearShadow(ctx);
     ctx.restore();
-  } else {
-    // 计算 lat/lng 边界
-    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
-    for (const [lat, lng] of pts) {
-      if (lat == null || lng == null) continue;
-      if (lat < minLat) minLat = lat;
-      if (lat > maxLat) maxLat = lat;
-      if (lng < minLng) minLng = lng;
-      if (lng > maxLng) maxLng = lng;
-    }
-    const lonR = Math.max(maxLng - minLng, 0.0001);
-    const latR = Math.max(maxLat - minLat, 0.0001);
-    // 按经度方向做等距投影(小区域可接受)
-    const padding = 30;
-    const innerW = w - padding * 2;
-    const innerH = h - padding * 2;
-    const scale = Math.min(innerW / lonR, innerH / latR);
-    const dx = (innerW - lonR * scale) / 2;
-    const dy = (innerH - latR * scale) / 2;
-    const project = (lat, lng) => [
-      x + padding + dx + (lng - minLng) * scale,
-      y + padding + dy + (maxLat - lat) * scale,
-    ];
-
-    // 起终点标
-    const first = pts.find(p => p[0] != null && p[1] != null);
-    const last = [...pts].reverse().find(p => p[0] != null && p[1] != null);
-
-    // 轨迹
-    const poly = getPolyline(_state.currentRideIndex);
-    const routeColor = (poly && poly.options && poly.options.color) || '#4ECDC4';
-    ctx.strokeStyle = routeColor;
-    ctx.lineWidth = 5;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-    let started = false;
-    for (const [lat, lng] of pts) {
-      if (lat == null || lng == null) continue;
-      const [px, py] = project(lat, lng);
-      if (!started) { ctx.moveTo(px, py); started = true; }
-      else ctx.lineTo(px, py);
-    }
-    ctx.stroke();
-    ctx.restore();
-
-    // 起点 / 终点 (在面板外画)
-    if (first) {
-      const [sx, sy] = project(first[0], first[1]);
-      _drawDot(ctx, sx, sy, '#4ECDC4', '起');
-    }
-    if (last && last !== first) {
-      const [ex, ey] = project(last[0], last[1]);
-      _drawDot(ctx, ex, ey, '#FF6B6B', '终');
-    }
+    return;
   }
 
-  // 边框
-  ctx.strokeStyle = 'rgba(0,0,0,0.08)';
-  ctx.lineWidth = 1;
+  // 计算 lat/lng 边界
+  let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+  for (const [lat, lng] of pts) {
+    if (lat == null || lng == null) continue;
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+  }
+  const lonR = Math.max(maxLng - minLng, 0.0001);
+  const latR = Math.max(maxLat - minLat, 0.0001);
+  const padding = 30;
+  const innerW = w - padding * 2;
+  const innerH = h - padding * 2;
+  const scale = Math.min(innerW / lonR, innerH / latR);
+  const dx = (innerW - lonR * scale) / 2;
+  const dy = (innerH - latR * scale) / 2;
+  const project = (lat, lng) => [
+    x + padding + dx + (lng - minLng) * scale,
+    y + padding + dy + (maxLat - lat) * scale,
+  ];
+
+  const first = pts.find(p => p[0] != null && p[1] != null);
+  const last = [...pts].reverse().find(p => p[0] != null && p[1] != null);
+
+  // 轨迹主线 + 一层描边让浅色路线也能看清
+  const poly = getPolyline(_state.currentRideIndex);
+  const routeColor = (poly && poly.options && poly.options.color) || '#4ECDC4';
+  ctx.strokeStyle = isLight ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = 8;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
   ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+  let started = false;
+  for (const [lat, lng] of pts) {
+    if (lat == null || lng == null) continue;
+    const [px, py] = project(lat, lng);
+    if (!started) { ctx.moveTo(px, py); started = true; }
+    else ctx.lineTo(px, py);
+  }
   ctx.stroke();
+  ctx.strokeStyle = routeColor;
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  started = false;
+  for (const [lat, lng] of pts) {
+    if (lat == null || lng == null) continue;
+    const [px, py] = project(lat, lng);
+    if (!started) { ctx.moveTo(px, py); started = true; }
+    else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // 起终点 (在面板外画,带白底圈)
+  if (first) {
+    const [sx, sy] = project(first[0], first[1]);
+    _drawDot(ctx, sx, sy, '#4ECDC4', '起');
+  }
+  if (last && last !== first) {
+    const [ex, ey] = project(last[0], last[1]);
+    _drawDot(ctx, ex, ey, '#FF6B6B', '终');
+  }
 }
 
 function _drawDot(ctx, x, y, color, label) {
@@ -203,29 +253,30 @@ function _drawDot(ctx, x, y, color, label) {
 
 function drawTitle(ctx, ride, w, isLight) {
   const fg = isLight ? '#222' : '#fff';
-  const fgSub = isLight ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.78)';
-  const chipBg = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.18)';
+  const fgSub = isLight ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.85)';
   const chipFg = isLight ? '#222' : '#fff';
 
-  // 日期 chip (左上角小徽章)
+  // 日期 chip — 玻璃 pill
   const dateText = ride.date || '';
   ctx.font = '600 18px -apple-system, "PingFang SC", sans-serif';
   const dateW = ctx.measureText(dateText).width;
-  const chipPadX = 14, chipH = 32;
+  const chipPadX = 16, chipH = 36;
   const chipX = 60, chipY = 56;
-  ctx.fillStyle = chipBg;
-  _roundRect(ctx, chipX, chipY, dateW + chipPadX * 2, chipH, chipH / 2);
-  ctx.fill();
+  _drawGlassPanel(ctx, chipX, chipY, dateW + chipPadX * 2, chipH, chipH / 2, isLight);
+  _applyTextShadow(ctx, isLight);
   ctx.fillStyle = chipFg;
   ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
   ctx.fillText(dateText, chipX + chipPadX, chipY + chipH / 2 + 1);
+  _clearShadow(ctx);
 
-  // 路线名 (大标题)
+  // 路线名 (大标题,带阴影)
   ctx.textBaseline = 'top';
   ctx.fillStyle = fg;
   ctx.font = '700 64px -apple-system, "PingFang SC", sans-serif';
   const title = ride.route || '骑行';
-  ctx.fillText(title, 60, 108);
+  _applyTextShadow(ctx, isLight);
+  ctx.fillText(title, 60, 114);
 
   // 时间 · 距离
   ctx.font = '500 22px -apple-system, "PingFang SC", sans-serif';
@@ -233,41 +284,37 @@ function drawTitle(ctx, ride, w, isLight) {
   const dist = ride.distance_km ? `${ride.distance_km} km` : '';
   const tm = ride.start_time ? `${ride.start_time}${ride.end_time ? ' - ' + ride.end_time : ''}` : '';
   const sub = [dist, tm].filter(Boolean).join('  ·  ');
-  ctx.fillText(sub, 60, 196);
+  ctx.fillText(sub, 60, 200);
+  _clearShadow(ctx);
 }
 
 function drawBrandMark(ctx, w, h, isLight) {
-  // 右上角小品牌标
-  const fg = isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.85)';
-  const fgSub = isLight ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.55)';
-  ctx.save();
-  ctx.translate(w - 60, 64);
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'top';
-  ctx.fillStyle = fg;
+  // 右上角小品牌玻璃 pill
+  const pillW = 168, pillH = 56;
+  const x = w - 60 - pillW, y = 50;
+  _drawGlassPanel(ctx, x, y, pillW, pillH, pillH / 2, isLight);
+  // 文字
+  _applyTextShadow(ctx, isLight);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  const cx = x + 24;
+  ctx.fillStyle = isLight ? '#0a0a0a' : '#fff';
   ctx.font = '700 22px -apple-system, "PingFang SC", sans-serif';
-  ctx.fillText('cycling', 0, 0);
-  ctx.fillStyle = fgSub;
+  ctx.fillText('cycling', cx, y + pillH / 2 - 9);
+  ctx.fillStyle = isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.7)';
   ctx.font = '500 14px -apple-system, "PingFang SC", sans-serif';
-  ctx.fillText('dashboard', 0, 28);
-  ctx.restore();
+  ctx.fillText('dashboard', cx, y + pillH / 2 + 13);
+  _clearShadow(ctx);
 }
 
 function drawStatCard(ctx, x, y, w, h, val, unit, label, isLight) {
-  const bg = isLight ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.1)';
-  const border = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.15)';
   const fg = isLight ? '#222' : '#fff';
-  const fgSub = isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.7)';
+  const fgSub = isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.75)';
   const r = 14;
-  ctx.fillStyle = bg;
-  _roundRect(ctx, x, y, w, h, r);
-  ctx.fill();
-  ctx.strokeStyle = border;
-  ctx.lineWidth = 1;
-  _roundRect(ctx, x, y, w, h, r);
-  ctx.stroke();
+  _drawGlassPanel(ctx, x, y, w, h, r, isLight);
 
-  // value + unit (top)
+  // value + unit (top) + label (bottom),统一加阴影
+  _applyTextShadow(ctx, isLight);
   ctx.fillStyle = fg;
   ctx.font = '700 30px -apple-system, "PingFang SC", sans-serif';
   ctx.textBaseline = 'top';
@@ -279,10 +326,10 @@ function drawStatCard(ctx, x, y, w, h, val, unit, label, isLight) {
     ctx.fillStyle = fgSub;
     ctx.fillText(unit, x + 14 + vw + 4, y + 22);
   }
-  // label (bottom)
   ctx.fillStyle = fgSub;
   ctx.font = '500 12px -apple-system, "PingFang SC", sans-serif';
   ctx.fillText(label.toUpperCase(), x + 14, y + h - 22);
+  _clearShadow(ctx);
 }
 
 function drawStats(ctx, ride, w, h, isLight) {
@@ -319,37 +366,38 @@ function drawStats(ctx, ride, w, h, isLight) {
     drawStatCard(ctx, x, y, cellW, cardH, v, s.unit, s.label, isLight);
   });
 
-  // HR 分区条 (整行)
+  // HR 分区 (5 个独立 chip,玻璃面板 + 顶部色块 + 标签 + 百分比)
   if (zoneItem) {
-    const y = gridTop + rows * (cardH + gap) + 4;
     const z = getZonesArray(ride);
-    const totalW = w - 120;
-    const barH = 18;
     const labels = ['Z1', 'Z2', 'Z3', 'Z4', 'Z5'];
-    let cur = 60;
+    const y = gridTop + rows * (cardH + gap) + 4;
+    const totalW = w - 120;
+    const chipGap = 10;
+    const chipW = (totalW - chipGap * 4) / 5;
+    const chipH = 70;
+    const colorH = 12;
     z.forEach((pct, i) => {
-      if (!pct) return;
-      const wseg = totalW * (pct / 100);
+      const cx = 60 + i * (chipW + chipGap);
+      _drawGlassPanel(ctx, cx, y, chipW, chipH, 12, isLight);
+      // 顶部色块
+      ctx.save();
+      _roundRect(ctx, cx + 8, y + 8, chipW - 16, colorH, colorH / 2);
+      ctx.clip();
       ctx.fillStyle = HR_COLORS[i];
-      if (i === 0) {
-        _roundRect(ctx, cur, y, wseg, barH, [barH / 2, 0, 0, barH / 2]);
-        ctx.fill();
-      } else if (i === z.length - 1) {
-        _roundRect(ctx, cur, y, wseg, barH, [0, barH / 2, barH / 2, 0]);
-        ctx.fill();
-      } else {
-        ctx.fillRect(cur, y, wseg, barH);
-      }
-      if (wseg > 40) {
-        ctx.fillStyle = '#fff';
-        ctx.font = '600 12px -apple-system, "PingFang SC", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(`${labels[i]} ${pct.toFixed(0)}%`, cur + wseg / 2, y + barH / 2 + 1);
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-      }
-      cur += wseg;
+      ctx.fillRect(cx + 8, y + 8, chipW - 16, colorH);
+      ctx.restore();
+      // 标签
+      _applyTextShadow(ctx, isLight);
+      ctx.fillStyle = isLight ? '#0a0a0a' : '#fff';
+      ctx.font = '700 13px -apple-system, "PingFang SC", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(labels[i], cx + chipW / 2, y + 26);
+      // 百分比
+      ctx.font = '700 20px -apple-system, "PingFang SC", sans-serif';
+      ctx.fillText(pct.toFixed(0) + '%', cx + chipW / 2, y + 42);
+      _clearShadow(ctx);
+      ctx.textAlign = 'left';
     });
   }
 }
@@ -405,10 +453,10 @@ function renderTo(ctx, ride, W, H) {
   const isLight = renderBackground(ctx, W, H);
   drawTitle(ctx, ride, W, isLight);
   drawBrandMark(ctx, W, H, isLight);
-  const titleH = 240;
+  const titleH = 256;
   const mapX = 60, mapY = titleH;
   const mapW = W - 120, mapH = SIZES[_state.ratio].mapH - titleH + 60;
-  drawTrackInto(ctx, ride, mapX, mapY, mapW, mapH);
+  drawTrackInto(ctx, ride, mapX, mapY, mapW, mapH, isLight);
   drawStats(ctx, ride, W, H, isLight);
   drawWatermark(ctx, W, H, isLight);
 }
