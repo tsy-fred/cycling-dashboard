@@ -984,6 +984,9 @@ async function handleParsedRide(parsed, file) {
   const match = matchRouteByGPS(parsed.start_lat, parsed.start_lng, parsed.end_lat, parsed.end_lng, parsed.track_points, parsed.distance_km);
   if (match) {
     parsed.route = match.reversed ? reverseRouteName(match.route) : match.route;
+    // 匹配已有路线时也检查圈数
+    const laps = parsed.track_points ? countLaps(parsed.track_points) : 1;
+    if (laps > 1) parsed.manual_laps = laps;
     showStatus(`✅ ${file.name || parsed.filename} 已匹配路线「${parsed.route}」${match.reversed ? '(方向相反)' : ''}`, 'ok');
     await new Promise(r => setTimeout(r, 800));
     finalizeUpload(parsed, file);
