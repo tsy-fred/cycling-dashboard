@@ -497,6 +497,14 @@ function haversineKm(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2), Math.sqrt(1 - Math.sin(dLat/2)**2 - Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2));
 }
 
+function getTrackPointsAt(trackPoints, ...ratios) {
+  if (!trackPoints || trackPoints.length < 3) return null;
+  return ratios.map(r => {
+    const i = Math.floor((trackPoints.length - 1) * r);
+    return { lat: trackPoints[i][0], lng: trackPoints[i][1] };
+  });
+}
+
 function getTrackMidpoint(trackPoints) {
   if (!trackPoints || trackPoints.length < 3) return null;
   const mid = Math.floor(trackPoints.length / 2);
@@ -522,8 +530,8 @@ function countLaps(trackPoints) {
 }
 
 function matchRouteByGPS(startLat, startLng, endLat, endLng, trackPoints, newDistKm) {
-  const isLoop = startLat != null && endLat != null && haversineKm(startLat, startLng, endLat, endLng) < 0.3;
-  const newMid = isLoop && trackPoints ? getTrackMidpoint(trackPoints) : null;
+  const isLoop = startLat != null && endLat != null && haversineKm(startLat, startLng, endLat, endLng) < 0.5;
+  const newPts = isLoop && trackPoints ? getTrackPointsAt(trackPoints, 0.25, 0.5, 0.75) : null;
   let best = null, bestDist = Infinity;
 
   for (const r of RIDES) {
@@ -539,17 +547,20 @@ function matchRouteByGPS(startLat, startLng, endLat, endLng, trackPoints, newDis
       if (dr < bestDist * 1.15 && sdr < GPS_MATCH_KM && edr < GPS_MATCH_KM) { bestDist = dr; best = { route: r.route, reversed: true }; }
     }
     if (isLoop) {
-      const rIsLoop = r.start_lat != null && r.end_lat != null && haversineKm(r.start_lat, r.start_lng, r.end_lat, r.end_lng) < 0.3;
+      const rIsLoop = r.start_lat != null && r.end_lat != null && haversineKm(r.start_lat, r.start_lng, r.end_lat, r.end_lng) < 0.5;
       if (!rIsLoop) continue;
       const sd = haversineKm(startLat, startLng, r.start_lat, r.start_lng);
       if (sd >= GPS_MATCH_KM) continue;
-      const rMid = r.track_points ? getTrackMidpoint(r.track_points) : null;
-      if (newMid && rMid) {
-        const md = haversineKm(newMid.lat, newMid.lng, rMid.lat, rMid.lng);
+      const rPts = r.track_points ? getTrackPointsAt(r.track_points, 0.25, 0.5, 0.75) : null;
+      if (newPts && rPts) {
+        const d1 = haversineKm(newPts[0].lat, newPts[0].lng, rPts[0].lat, rPts[0].lng);
+        const d2 = haversineKm(newPts[1].lat, newPts[1].lng, rPts[1].lat, rPts[1].lng);
+        const d3 = haversineKm(newPts[2].lat, newPts[2].lng, rPts[2].lat, rPts[2].lng);
+        const avgD = (d1 + d2 + d3) / 3;
         const distDiff = Math.abs((newDistKm || 0) - (r.distance_km || 0));
-        // 中点距离 < 500m 且总路程差 < 2km 才匹配
-        if (md < 0.5 && distDiff < 2 && md * 2 + distDiff < bestDist) {
-          bestDist = md * 2 + distDiff;
+        // 三点平均距离 < 1km 且总路程差 < 2km 才匹配
+        if (avgD < 1 && distDiff < 2 && avgD * 2 + distDiff < bestDist) {
+          bestDist = avgD * 2 + distDiff;
           best = { route: r.route, reversed: false };
         }
       }
