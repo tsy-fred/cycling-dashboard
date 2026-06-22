@@ -19,5 +19,15 @@
     "athlete": "",
     "auto_sync": false,
     "_hint": "Strava 同步配置。先去 https://www.strava.com/settings/api 注册一个 API Application（Callback Domain 填 localhost），把 client_id / client_secret 粘到设置面板，点连接后会自动 OAuth 拿到 refresh_token"
+  },
+  "xingzhe": {
+    "client_id": "",
+    "client_secret": "",
+    "refresh_token": "",
+    "access_token": "",
+    "expires_at": 0,
+    "athlete": "",
+    "auto_sync": false,
+    "_hint": "行者同步配置。先去 https://open.imxingzhe.com 注册开发者账号，创建应用后把 client_id / client_secret 粘到设置面板，点连接后会自动 OAuth 拿到 refresh_token"
   }
 }

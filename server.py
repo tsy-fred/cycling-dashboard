@@ -44,6 +44,15 @@ def load_config():
             "athlete": "",
             "auto_sync": False,
         },
+        "xingzhe": {
+            "client_id": "",
+            "client_secret": "",
+            "refresh_token": "",
+            "access_token": "",
+            "expires_at": 0,
+            "athlete": "",
+            "auto_sync": False,
+        },
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -53,6 +62,8 @@ def load_config():
                 cfg.setdefault(k, v)
             for k, v in default["strava"].items():
                 cfg["strava"].setdefault(k, v)
+            for k, v in default["xingzhe"].items():
+                cfg["xingzhe"].setdefault(k, v)
             return cfg
         except Exception:
             pass
@@ -73,6 +84,8 @@ def save_config(cfg):
 
 STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token"
 STRAVA_API = "https://www.strava.com/api/v3"
+XINGZHE_TOKEN_URL = "https://www.imxingzhe.com/oauth2/v2/access_token/"
+XINGZHE_API = "https://www.imxingzhe.com/openapi/v1"
 
 
 def _ssl_context():
@@ -139,6 +152,34 @@ def get_strava_access_token():
     return data["access_token"]
 
 
+def get_xingzhe_access_token():
+    """读取/刷新 行者 access_token,过期前 60 秒主动续。失败返回 None。"""
+    x = CONFIG.get("xingzhe", {})
+    rt = x.get("refresh_token", "")
+    cid = x.get("client_id", "")
+    cs = x.get("client_secret", "")
+    if not (rt and cid and cs):
+        return None
+    if x.get("access_token") and x.get("expires_at", 0) > time.time() + 60:
+        return x["access_token"]
+    body = urllib.parse.urlencode({
+        "grant_type": "refresh_token", "refresh_token": rt,
+    }).encode("utf-8")
+    auth = f"Bearer {cid}:{cs}"
+    status, data = strava_http("POST", XINGZHE_TOKEN_URL,
+                               headers={"Authorization": auth,
+                                        "Content-Type": "application/x-www-form-urlencoded"},
+                               data=body)
+    if status != 200 or "access_token" not in data:
+        return None
+    cfg = load_config()
+    cfg["xingzhe"]["access_token"] = data["access_token"]
+    cfg["xingzhe"]["expires_at"] = time.time() + data.get("expires_in", 31536000)
+    cfg["xingzhe"]["refresh_token"] = data.get("refresh_token", rt)
+    save_config(cfg)
+    return data["access_token"]
+
+
 class CyclingHandler(http.server.SimpleHTTPRequestHandler):
     """自定义请求处理：静态文件 + 上传解析"""
 
@@ -163,6 +204,10 @@ class CyclingHandler(http.server.SimpleHTTPRequestHandler):
         elif parsed.path.startswith('/strava/status/'):
             upload_id = parsed.path[len('/strava/status/'):]
             self.handle_strava_status(upload_id)
+        elif parsed.path == '/xingzhe/connect':
+            self.handle_xingzhe_connect()
+        elif parsed.path == '/xingzhe/callback':
+            self.handle_xingzhe_callback()
         else:
             super().do_GET()
 
@@ -188,6 +233,10 @@ class CyclingHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_strava_upload()
         elif path == '/strava/disconnect':
             self.handle_strava_disconnect()
+        elif path == '/xingzhe/upload':
+            self.handle_xingzhe_upload()
+        elif path == '/xingzhe/disconnect':
+            self.handle_xingzhe_disconnect()
         else:
             self.send_json({"error": "未知接口"}, 404)
 
@@ -623,6 +672,140 @@ a{{display:inline-block;padding:8px 24px;background:#FC4C02;color:#fff;text-deco
         cfg["strava"]["access_token"] = ""
         cfg["strava"]["expires_at"] = 0
         cfg["strava"]["athlete"] = ""
+        save_config(cfg)
+        self.send_json({"ok": True})
+
+    # ── 行者 OAuth + 上传 ──
+
+    def handle_xingzhe_connect(self):
+        x = CONFIG.get("xingzhe", {})
+        cid = x.get("client_id", "")
+        if not cid:
+            self.send_json({"error": "请先在设置面板填入行者 client_id"}, 400)
+            return
+        port = CONFIG.get("server", {}).get("port", 8080)
+        redirect = f"http://localhost:{port}/xingzhe/callback"
+        url = (f"https://www.imxingzhe.com/oauth2/v2/authorize?"
+               f"client_id={cid}&response_type=code&state=cycling&scope=write&"
+               f"redirect_uri={urllib.parse.quote(redirect)}")
+        self.send_response(302)
+        self.send_header("Location", url)
+        self.end_headers()
+
+    def handle_xingzhe_callback(self):
+        qs = parse_qs(urlparse(self.path).query)
+        code = (qs.get("code") or [""])[0]
+        if not code:
+            self.send_html("<h1>❌ 行者回调缺少 code</h1>")
+            return
+        x = CONFIG.get("xingzhe", {})
+        cid, cs = x.get("client_id", ""), x.get("client_secret", "")
+        if not (cid and cs):
+            self.send_html("<h1>❌ 配置缺少 client_id / client_secret</h1>")
+            return
+        # 行者需要 Authorization: Bearer client_id:client_secret
+        auth = f"Bearer {cid}:{cs}"
+        body = urllib.parse.urlencode({"code": code, "grant_type": "authorization_code"}).encode("utf-8")
+        status, data = strava_http("POST", XINGZHE_TOKEN_URL,
+                                   headers={"Authorization": auth,
+                                            "Content-Type": "application/x-www-form-urlencoded"},
+                                   data=body)
+        if status != 200 or "refresh_token" not in data:
+            err = data.get("msg") or data.get("error") or "未知错误"
+            raw = data.get("raw", "")
+            self.send_html(f"""<meta charset="utf-8"><h1>❌ 行者换 token 失败</h1>
+<p><b>HTTP {status}</b> · {err}</p>
+<details><summary>原始响应</summary><pre>{raw[:800]}</pre></details>
+<p><a href="/">返回看板</a></p>""")
+            return
+        cfg = load_config()
+        cfg["xingzhe"]["refresh_token"] = data["refresh_token"]
+        cfg["xingzhe"]["access_token"] = data.get("access_token", "")
+        cfg["xingzhe"]["expires_at"] = time.time() + data.get("expires_in", 21600)
+        athlete_name = ""
+        if data.get("access_token"):
+            _, me = strava_http("GET", f"{XINGZHE_API}/athlete/info/",
+                                headers={"Authorization": f"Bearer {data['access_token']}"})
+            if isinstance(me, dict):
+                athlete_name = me.get("username", "")
+        cfg["xingzhe"]["athlete"] = athlete_name
+        save_config(cfg)
+        self.send_html(f"""<!doctype html><meta charset="utf-8"><title>行者已连接</title>
+<style>body{{font-family:-apple-system,sans-serif;background:#f7f8fa;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}}
+.c{{background:#fff;padding:32px 40px;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.1);text-align:center}}
+h1{{color:#2e7d32;margin:0 0 8px;font-size:20px}}
+p{{color:#666;font-size:13px;margin:0 0 16px}}
+a{{display:inline-block;padding:8px 24px;background:#FC4C02;color:#fff;text-decoration:none;border-radius:8px;font-size:13px}}</style>
+<div class="c"><h1>✅ 行者连接成功</h1><p>已连接账号：<b>{athlete_name or '(未知)'}</b></p>
+<a href="/">返回看板</a></div>
+<script>setTimeout(function(){{location.href='/?xingzhe=connected'}},800)</script>
+""")
+
+    def handle_xingzhe_upload(self):
+        x = CONFIG.get("xingzhe", {})
+        if not x.get("refresh_token"):
+            self.send_json({"error": "未连接行者"}, 400)
+            return
+        content_len = int(self.headers.get('Content-Length', 0))
+        if content_len == 0:
+            self.send_json({"error": "无数据"}, 400)
+            return
+        try:
+            data = json.loads(self.rfile.read(content_len))
+        except json.JSONDecodeError:
+            self.send_json({"error": "JSON 格式错误"}, 400)
+            return
+        try:
+            fit_bytes = base64.b64decode(data["file_base64"])
+        except Exception:
+            self.send_json({"error": "file_base64 解析失败"}, 400)
+            return
+        if not fit_bytes:
+            self.send_json({"error": "空文件"}, 400)
+            return
+        token = get_xingzhe_access_token()
+        if not token:
+            self.send_json({"error": "无法获取行者 access_token"}, 401)
+            return
+        import hashlib
+        md5 = hashlib.md5(fit_bytes).hexdigest()
+        boundary = "----xingzhe" + str(int(time.time() * 1000))
+        fn = data.get("name", "ride.fit")
+        def field(name, value):
+            return (f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n").encode("utf-8")
+        def file_field(name, filename, content):
+            return (f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"; filename=\"{filename}\"\r\n"
+                    "Content-Type: application/octet-stream\r\n\r\n").encode("utf-8") + content + b"\r\n"
+        parts = [
+            field("name", data.get("name", "骑行")),
+            field("file_type", "fit"),
+            field("fit_filename", fn),
+            field("md5", md5),
+        ]
+        if data.get("detail"):
+            parts.append(field("detail", str(data["detail"])))
+        parts.append(file_field("file", fn, fit_bytes))
+        body = b"".join(parts) + f"--{boundary}--\r\n".encode("utf-8")
+        status, resp = strava_http(
+            "POST", f"{XINGZHE_API}/uploads/",
+            headers={"Authorization": f"Bearer {token}",
+                     "Content-Type": f"multipart/form-data; boundary={boundary}"},
+            data=body, timeout=60,
+        )
+        if status == 201 and resp.get("code") == 0:
+            self.send_json({"ok": True, "workout_id": resp.get("data", {}).get("workout_id"),
+                            "upload_id": resp.get("data", {}).get("upload_id"),
+                            "new": resp.get("data", {}).get("new", True)})
+        else:
+            msg = resp.get("msg") or resp.get("error") or f"HTTP {status}"
+            self.send_json({"error": f"行者上传失败: {msg}", "detail": resp}, status or 500)
+
+    def handle_xingzhe_disconnect(self):
+        cfg = load_config()
+        cfg["xingzhe"]["refresh_token"] = ""
+        cfg["xingzhe"]["access_token"] = ""
+        cfg["xingzhe"]["expires_at"] = 0
+        cfg["xingzhe"]["athlete"] = ""
         save_config(cfg)
         self.send_json({"ok": True})
 
