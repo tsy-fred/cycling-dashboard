@@ -1156,12 +1156,13 @@ async function syncToStrava(base64, ride, filename) {
     if (!res.ok || data.error) return `❌ Strava: ${data.error || '上传失败'}`;
     const uploadId = data.upload_id;
     // 轮询状态(最多 30 秒,实际 Strava 处理通常 1~10 秒)
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < 20; i++) {
       await new Promise(r => setTimeout(r, 2000));
       const sr = await fetch('/strava/status/' + uploadId);
       const sd = await sr.json();
       if (sd.status === 'Your activity is ready.') return '✅ Strava 已同步';
-      if (sd.error) return `❌ Strava 处理错误: ${sd.error}`;
+      if (sd.activity_id) return '✅ Strava 已同步';
+      // 有 error 但 activity_id 也可能在后面才返回,继续轮询
     }
     return '⏳ Strava 处理中,稍后在 Strava 端查看';
   } catch (e) {
