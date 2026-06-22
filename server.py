@@ -770,27 +770,19 @@ a{{display:inline-block;padding:8px 24px;background:#FC4C02;color:#fff;text-deco
         import hashlib
         md5 = hashlib.md5(fit_bytes).hexdigest()
         fn = data.get("fit_filename", "ride.fit").replace(".fit", "") + ".fit"
-        boundary = "----xingzhe" + str(int(time.time() * 1000))
-        def field(name, value):
-            return (f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n").encode("utf-8")
-        def file_field(name, filename, content):
-            return (f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"; filename=\"{filename}\"\r\n"
-                    "Content-Type: application/octet-stream\r\n\r\n").encode("utf-8") + content + b"\r\n"
-        parts = [
-            field("name", data.get("name", "骑行")[:32]),
-            field("file_type", "fit"),
-            field("fit_filename", fn),
-            field("md5", md5),
-        ]
-        if data.get("detail"):
-            parts.append(field("detail", str(data["detail"])[:1500]))
-        parts.append(file_field("file", fn, fit_bytes))
-        body = b"".join(parts) + f"--{boundary}--\r\n".encode("utf-8")
+        file_b64 = base64.b64encode(fit_bytes).decode("ascii")
+        payload = json.dumps({
+            "name": (data.get("name", "骑行") or "骑行")[:32],
+            "file_type": "fit",
+            "fit_filename": fn,
+            "md5": md5,
+            "file": file_b64,
+        })
         status, resp = strava_http(
             "POST", f"{XINGZHE_API}/uploads/",
             headers={"Authorization": f"Bearer {token}",
-                     "Content-Type": f"multipart/form-data; boundary={boundary}"},
-            data=body, timeout=60,
+                     "Content-Type": "application/json"},
+            data=payload, timeout=120,
         )
         if status == 201 and resp.get("code") == 0:
             self.send_json({"ok": True, "workout_id": resp.get("data", {}).get("workout_id"),

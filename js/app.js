@@ -930,6 +930,10 @@ function buildParsedFromFitFile(data, filename) {
   for (const k of Object.keys(hrZones)) hrZones[k] = +(hrZones[k] / th * 100).toFixed(1);
 
   const cads = records.filter(r => r.cadence > 0).map(r => r.cadence);
+  function bjISO(d) {
+    if (!d) return '';
+    return new Date(d.getTime() + 8 * 3600000).toISOString();
+  }
   const startDt = session.start_time ? new Date(session.start_time) : null;
   const elapsed = session.total_elapsed_time || 0;
   const endDt = startDt ? new Date(startDt.getTime() + elapsed * 1000) : null;
@@ -972,9 +976,9 @@ function buildParsedFromFitFile(data, filename) {
     has_cadence: cads.length > 0,
     avg_cadence: cads.length ? +(cads.reduce((a, b) => a + b, 0) / cads.length).toFixed(1) : 0,
     max_cadence: cads.length ? Math.max(...cads) : 0,
-    date: startDt ? startDt.toISOString().slice(0, 10) : 'unknown',
-    start_time: startDt ? startDt.toISOString().slice(11, 16) : null,
-    end_time: endDt ? endDt.toISOString().slice(11, 16) : null,
+    date: startDt ? bjISO(startDt).slice(0, 10) : 'unknown',
+    start_time: startDt ? bjISO(startDt).slice(11, 16) : null,
+    end_time: endDt ? bjISO(endDt).slice(11, 16) : null,
     track_points: trackPoints,
     start_lat: sc(session.start_position_lat) ?? (firstPt?.lat ?? null),
     start_lng: sc(session.start_position_long) ?? (firstPt?.lng ?? null),
