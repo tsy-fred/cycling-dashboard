@@ -504,18 +504,18 @@ function getTrackMidpoint(trackPoints) {
 }
 
 function countLaps(trackPoints) {
-  if (!trackPoints || trackPoints.length < 10) return 1;
+  if (!trackPoints || trackPoints.length < 20) return 1;
   const startLat = trackPoints[0][0], startLng = trackPoints[0][1];
-  let passes = 0, inZone = false;
-  const threshold = 0.3; // 300m，容忍 GPS 漂移
+  let passes = 0, inZone = true;
+  const threshold = 0.5; // 500m，比之前 300m 更容忍 GPS 漂移和采样间隔
 
   for (let i = 1; i < trackPoints.length; i++) {
     const d = haversineKm(trackPoints[i][0], trackPoints[i][1], startLat, startLng);
-    if (d < threshold && !inZone) {
+    if (d >= threshold) {
+      inZone = false;
+    } else if (!inZone) {
       passes++;
       inZone = true;
-    } else if (d >= threshold * 1.5) {
-      inZone = false;
     }
   }
   return Math.max(1, passes);
@@ -1017,16 +1017,13 @@ async function handleParsedRide(parsed, file) {
         if (midName) midHint = ` · 途经 ${midName}`;
         lapCount = countLaps(parsed.track_points);
       }
-      let lapInfo = '';
       const useLaps = parsed.manual_laps || lapCount;
-      if (useLaps >= 1) {
-        const avgLapMin = parsed.moving_time_min ? (parsed.moving_time_min / useLaps) : 0;
-        const lpTime = avgLapMin >= 1 ? `${Math.floor(avgLapMin)}′${Math.round(avgLapMin % 1 * 60)}″` : `${Math.round(avgLapMin * 60)}″`;
-        lapInfo = ` · ${useLaps} 圈 · 均 ${lpTime}/圈`;
-      }
+      const avgLapMin = parsed.moving_time_min && useLaps ? (parsed.moving_time_min / useLaps) : 0;
+      const lpTimeStr = avgLapMin >= 1 ? `${Math.floor(avgLapMin)}′${Math.round(avgLapMin % 1 * 60)}″` : `${Math.round(avgLapMin * 60)}″`;
+      document.getElementById('routeLoopLaps').value = useLaps;
       document.querySelector('[data-mode="loop"]').classList.add('active');
       document.getElementById('panelLOOP').style.display = '';
-      document.getElementById('loopHint').textContent = `📍 ${startName}${midHint}${lapInfo} · ${parsed.distance_km}km`;
+      document.getElementById('loopHint').textContent = `📍 ${startName}${midHint} · ${parsed.distance_km}km · 均 ${lpTimeStr}/圈`;
       document.getElementById('routeLoopName').value = startName.includes(',') ? '' : startName;
     } else {
       document.querySelector('[data-mode="ab"]').classList.add('active');
@@ -1043,7 +1040,18 @@ async function handleParsedRide(parsed, file) {
   }
 }
 
-function finishUploadWithName(name) { if (!pendingUploadData) return; pendingUploadData.parsed.route = name; finalizeUpload(pendingUploadData.parsed, pendingUploadData.file); pendingUploadData = null; }
+function finishUploadWithName(name) {
+  if (!pendingUploadData) return;
+  const { parsed, file } = pendingUploadData;
+  parsed.route = name;
+  const lapsEl = document.getElementById('routeLoopLaps');
+  if (lapsEl) {
+    const laps = parseInt(lapsEl.value);
+    if (laps && laps > 0) parsed.manual_laps = laps;
+  }
+  finalizeUpload(parsed, file);
+  pendingUploadData = null;
+}
 
 async function finalizeUpload(parsed, file) {
   const ride = buildRideObject(parsed, file.name);

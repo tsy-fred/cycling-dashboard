@@ -306,8 +306,16 @@
 
       <!-- 绕圈模式 -->
       <div class="name-mode-panel" id="panelLOOP" style="display:none">
-        <div style="font-size:11px;color:#888;margin-bottom:2px">地点名称</div>
-        <input type="text" class="modal-input" id="routeLoopName" placeholder="如：地点名" style="font-size:13px">
+        <div style="display:flex;gap:8px">
+          <div>
+            <div style="font-size:11px;color:#888;margin-bottom:2px">圈数</div>
+            <input type="number" class="modal-input" id="routeLoopLaps" min="1" value="1" style="font-size:13px;width:60px">
+          </div>
+          <div style="flex:1">
+            <div style="font-size:11px;color:#888;margin-bottom:2px">地点名称</div>
+            <input type="text" class="modal-input" id="routeLoopName" placeholder="如：地点名" style="font-size:13px">
+          </div>
+        </div>
         <div style="margin-top:6px;font-size:11px;color:#aaa">
           <span id="loopHint"><i data-lucide="map-pin" class="lci"></i> 获取位置信息…</span>
         </div>
