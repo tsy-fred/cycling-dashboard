@@ -22,7 +22,7 @@ const STAT_DEFS = [
   { key: 'max_hr', label: '最高心', unit: 'bpm', fmt: v => Math.round(v) },
   { key: 'calories', label: '消耗', unit: 'kcal', fmt: v => Math.round(v) },
   { key: 'elev_gain_m', label: '爬升', unit: 'm', fmt: v => Math.round(v) },
-  { key: 'num_laps', label: '圈数', unit: '', fmt: v => v || '-' },
+  { key: 'manual_laps', label: '圈数', unit: '', fmt: v => v || '-' },
   { key: '__hr_zones', label: 'HR 分区', isZones: true },
 ];
 
