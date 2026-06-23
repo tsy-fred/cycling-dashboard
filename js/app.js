@@ -220,16 +220,15 @@ window.showRide = function(i) {
   const r = RIDES[i];
   if (!r) return;
   _currentViewIdx = i;
-  const isLoop = r.start_lat != null && r.end_lat != null &&
-    haversineKm(r.start_lat, r.start_lng, r.end_lat, r.end_lng) < 0.3;
   let lapInfo = '';
-  if (isLoop && r.track_points && r.track_points.length > 10) {
-    const laps = r.manual_laps || countLaps(r.track_points);
-    if (laps >= 1) {
-      const avgLapMin = r.moving_time_min ? (r.moving_time_min / laps) : 0;
-      const lapTime = avgLapMin >= 1 ? `${Math.floor(avgLapMin)}′${Math.round(avgLapMin % 1 * 60)}″` : `${Math.round(avgLapMin * 60)}″`;
-      lapInfo = ` · <span class="lap-edit" onclick="event.stopPropagation();window.editLaps(${i})" title="点击修改圈数">${laps} 圈 ✏️</span> · 均 ${lapTime}/圈`;
-    }
+  // 直接按圈数显示,不卡 isLoop(避免「起终点不重合」的绕圈被吞掉)
+  let laps = 0;
+  if (r.manual_laps > 0) laps = r.manual_laps;
+  else if (r.track_points && r.track_points.length > 10) laps = countLaps(r.track_points);
+  if (laps >= 1) {
+    const avgLapMin = r.moving_time_min ? (r.moving_time_min / laps) : 0;
+    const lapTime = avgLapMin >= 1 ? `${Math.floor(avgLapMin)}′${Math.round(avgLapMin % 1 * 60)}″` : `${Math.round(avgLapMin * 60)}″`;
+    lapInfo = ` · <span class="lap-edit" onclick="event.stopPropagation();window.editLaps(${i})" title="点击修改圈数">${laps} 圈 ✏️</span> · 均 ${lapTime}/圈`;
   }
   switchToDetail(`${r.date} · ${r.route}${lapInfo} · ${r.distance_km}km · ${r.start_time || ''}-${r.end_time || ''}`);
   document.getElementById('delDetailBtn').style.display = 'inline-flex';
@@ -510,15 +509,20 @@ function getTrackMidpoint(trackPoints) {
   return { lat: trackPoints[mid][0], lng: trackPoints[mid][1] };
 }
 
+// 起点附近 500m 范围算"核心区" — 数离开核心区又回来的次数
+// 适用场景:起终点可重合也可不重合(绕圈式 A→B),只要多次经过起点附近就算绕圈
+const LOOP_DIST_KM = 1.0;         // 起终点距离 < 1km 视为"起终点近似重合"
+const LAP_DETECT_KM = 0.5;        // countLaps 用 500m 阈值(更容忍 GPS 漂移)
+
+// 圈数: 数"经过起点 500m 范围"的次数
 function countLaps(trackPoints) {
   if (!trackPoints || trackPoints.length < 20) return 1;
   const startLat = trackPoints[0][0], startLng = trackPoints[0][1];
   let passes = 0, inZone = true;
-  const threshold = 0.5; // 500m，比之前 300m 更容忍 GPS 漂移和采样间隔
 
   for (let i = 1; i < trackPoints.length; i++) {
     const d = haversineKm(trackPoints[i][0], trackPoints[i][1], startLat, startLng);
-    if (d >= threshold) {
+    if (d >= LAP_DETECT_KM) {
       inZone = false;
     } else if (!inZone) {
       passes++;
@@ -533,11 +537,10 @@ function countLaps(trackPoints) {
 function extractFirstLap(trackPoints) {
   if (!trackPoints || trackPoints.length < 20) return trackPoints;
   const startLat = trackPoints[0][0], startLng = trackPoints[0][1];
-  const threshold = 0.5;
   const startFrom = Math.floor(trackPoints.length / 4); // 跳过起点附近的前几个点
   for (let i = startFrom; i < trackPoints.length; i++) {
     const d = haversineKm(trackPoints[i][0], trackPoints[i][1], startLat, startLng);
-    if (d < threshold) return trackPoints.slice(0, i + 1);
+    if (d < LAP_DETECT_KM) return trackPoints.slice(0, i + 1);
   }
   return trackPoints;
 }
@@ -552,8 +555,17 @@ function trackPointsDist(trackPoints) {
   return d;
 }
 
+// 判定一条轨迹是不是"绕圈路线":
+// 起终点距离 < 1km(真 loop 或绕圈 A→B 起终点不算远)
+function isLoopRoute(startLat, startLng, endLat, endLng) {
+  if (startLat != null && endLat != null) {
+    return haversineKm(startLat, startLng, endLat, endLng) < LOOP_DIST_KM;
+  }
+  return false;
+}
+
 function matchRouteByGPS(startLat, startLng, endLat, endLng, trackPoints, newDistKm) {
-  const isLoop = startLat != null && endLat != null && haversineKm(startLat, startLng, endLat, endLng) < 0.5;
+  const isLoop = isLoopRoute(startLat, startLng, endLat, endLng);
   // 绕圈 + 多圈时：截到第一圈再采样，对单圈路线也能匹配
   let newPts = null;
   let compareSource = null;
@@ -577,7 +589,7 @@ function matchRouteByGPS(startLat, startLng, endLat, endLng, trackPoints, newDis
       if (dr < bestDist * 1.15 && sdr < GPS_MATCH_KM && edr < GPS_MATCH_KM) { bestDist = dr; best = { route: r.route, reversed: true }; }
     }
     if (isLoop) {
-      const rIsLoop = r.start_lat != null && r.end_lat != null && haversineKm(r.start_lat, r.start_lng, r.end_lat, r.end_lng) < 0.5;
+      const rIsLoop = isLoopRoute(r.start_lat, r.start_lng, r.end_lat, r.end_lng);
       if (!rIsLoop) continue;
       const sd = haversineKm(startLat, startLng, r.start_lat, r.start_lng);
       if (sd >= GPS_MATCH_KM) continue;
@@ -968,8 +980,7 @@ async function handleParsedRide(parsed, file) {
     finalizeUpload(parsed, file);
   } else {
     pendingUploadData = { parsed, file };
-    const isLoop = parsed.start_lat != null && parsed.end_lat != null &&
-      haversineKm(parsed.start_lat, parsed.start_lng, parsed.end_lat, parsed.end_lng) < 0.3;
+    const isLoop = isLoopRoute(parsed.start_lat, parsed.start_lng, parsed.end_lat, parsed.end_lng);
 
     // 获取地名
     let [startName, endName] = await Promise.all([
