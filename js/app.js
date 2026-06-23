@@ -542,13 +542,24 @@ function extractFirstLap(trackPoints) {
   return trackPoints;
 }
 
+// 算 track_points 累计距离(km)
+function trackPointsDist(trackPoints) {
+  if (!trackPoints || trackPoints.length < 2) return 0;
+  let d = 0;
+  for (let i = 1; i < trackPoints.length; i++) {
+    d += haversineKm(trackPoints[i-1][0], trackPoints[i-1][1], trackPoints[i][0], trackPoints[i][1]);
+  }
+  return d;
+}
+
 function matchRouteByGPS(startLat, startLng, endLat, endLng, trackPoints, newDistKm) {
   const isLoop = startLat != null && endLat != null && haversineKm(startLat, startLng, endLat, endLng) < 0.5;
   // 绕圈 + 多圈时：截到第一圈再采样，对单圈路线也能匹配
   let newPts = null;
+  let compareSource = null;
   if (isLoop && trackPoints) {
     const lapCount = countLaps(trackPoints);
-    const compareSource = lapCount > 1 ? extractFirstLap(trackPoints) : trackPoints;
+    compareSource = lapCount > 1 ? extractFirstLap(trackPoints) : trackPoints;
     newPts = getTrackPointsAt(compareSource, 0.25, 0.5, 0.75);
   }
   let best = null, bestDist = Infinity;
@@ -576,8 +587,12 @@ function matchRouteByGPS(startLat, startLng, endLat, endLng, trackPoints, newDis
         const d2 = haversineKm(newPts[1].lat, newPts[1].lng, rPts[1].lat, rPts[1].lng);
         const d3 = haversineKm(newPts[2].lat, newPts[2].lng, rPts[2].lat, rPts[2].lng);
         const avgD = (d1 + d2 + d3) / 3;
-        const distDiff = Math.abs((newDistKm || 0) - (r.distance_km || 0));
-        // 三点平均距离 < 1km 且总路程差 < 2km 才匹配
+        // 多圈时用截到的一圈距离做对比,避免 newDistKm(全程) vs 路线(单圈) 差太大
+        const refDist = (compareSource && trackPoints.length !== compareSource.length)
+          ? trackPointsDist(compareSource)
+          : (newDistKm || 0);
+        const distDiff = Math.abs(refDist - (r.distance_km || 0));
+        // 三点平均距离 < 1km 且单圈距离差 < 2km 才匹配
         if (avgD < 1 && distDiff < 2 && avgD * 2 + distDiff < bestDist) {
           bestDist = avgD * 2 + distDiff;
           best = { route: r.route, reversed: false };
@@ -1055,7 +1070,8 @@ async function finalizeUpload(parsed, file) {
     } catch {}
   }
   const hintLabel = syncHints ? ` · 同步:${syncHints}` : '';
-  showStatus(`✅ ${file.name} 解析成功！${parsed.distance_km}km，${parsed.date} · ${ride.route}${hintLabel}`, 'ok');
+  const lapHint = (ride.manual_laps || 0) > 1 ? ` · ${ride.manual_laps} 圈` : '';
+  showStatus(`✅ ${file.name} 解析成功！${parsed.distance_km}km，${parsed.date} · ${ride.route}${lapHint}${hintLabel}`, 'ok');
   if (syncHints) {
     document.querySelectorAll('.strava-sync-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
