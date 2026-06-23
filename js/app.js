@@ -528,9 +528,29 @@ function countLaps(trackPoints) {
   return Math.max(1, passes);
 }
 
+// 多圈时取第一圈的 track points（从起点到第一次"明显回到起点区域"），
+// 用来跟单圈的已有路线比对。圈数从 countLaps 单独记。
+function extractFirstLap(trackPoints) {
+  if (!trackPoints || trackPoints.length < 20) return trackPoints;
+  const startLat = trackPoints[0][0], startLng = trackPoints[0][1];
+  const threshold = 0.5;
+  const startFrom = Math.floor(trackPoints.length / 4); // 跳过起点附近的前几个点
+  for (let i = startFrom; i < trackPoints.length; i++) {
+    const d = haversineKm(trackPoints[i][0], trackPoints[i][1], startLat, startLng);
+    if (d < threshold) return trackPoints.slice(0, i + 1);
+  }
+  return trackPoints;
+}
+
 function matchRouteByGPS(startLat, startLng, endLat, endLng, trackPoints, newDistKm) {
   const isLoop = startLat != null && endLat != null && haversineKm(startLat, startLng, endLat, endLng) < 0.5;
-  const newPts = isLoop && trackPoints ? getTrackPointsAt(trackPoints, 0.25, 0.5, 0.75) : null;
+  // 绕圈 + 多圈时：截到第一圈再采样，对单圈路线也能匹配
+  let newPts = null;
+  if (isLoop && trackPoints) {
+    const lapCount = countLaps(trackPoints);
+    const compareSource = lapCount > 1 ? extractFirstLap(trackPoints) : trackPoints;
+    newPts = getTrackPointsAt(compareSource, 0.25, 0.5, 0.75);
+  }
   let best = null, bestDist = Infinity;
 
   for (const r of RIDES) {
@@ -927,7 +947,8 @@ async function handleParsedRide(parsed, file) {
     // 匹配已有路线时也检查圈数
     const laps = parsed.track_points ? countLaps(parsed.track_points) : 1;
     if (laps > 1) parsed.manual_laps = laps;
-    showStatus(`✅ ${file.name || parsed.filename} 已匹配路线「${parsed.route}」${match.reversed ? '(方向相反)' : ''}`, 'ok');
+    const lapHint = laps > 1 ? ` · ${laps} 圈` : '';
+    showStatus(`✅ ${file.name || parsed.filename} 已匹配路线「${parsed.route}」${match.reversed ? '(方向相反)' : ''}${lapHint}`, 'ok');
     await new Promise(r => setTimeout(r, 800));
     finalizeUpload(parsed, file);
   } else {
