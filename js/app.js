@@ -62,7 +62,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupExportModal();
   initStatsTabs();
   handleStravaUrlFlag();
-  handleXingzheUrlFlag();
 });
 
 function initStatsTabs() {
@@ -581,10 +580,6 @@ function initSettings() {
   const stravaSecret = document.getElementById('stravaClientSecret');
   const stravaStatus = document.getElementById('stravaStatus');
   const stravaAuto = document.getElementById('stravaAutoSync');
-  const xingzheId = document.getElementById('xingzheClientId');
-  const xingzheSecret = document.getElementById('xingzheClientSecret');
-  const xingzheStatus = document.getElementById('xingzheStatus');
-  const xingzheAuto = document.getElementById('xingzheAutoSync');
   if (!btn || !modal) return;
 
   let _currentCfg = {};
@@ -605,13 +600,6 @@ function initSettings() {
       stravaStatus.textContent = s.refresh_token
         ? `✅ 已连接: ${s.athlete || '未知账号'}`
         : (s.client_id ? '⏸️ 配置了 client_id,点连接完成 OAuth' : '⏸️ 未连接');
-      const x = cfg.xingzhe || {};
-      xingzheId.value = x.client_id || '';
-      xingzheSecret.value = x.client_secret || '';
-      xingzheAuto.checked = !!x.auto_sync;
-      xingzheStatus.textContent = x.refresh_token
-        ? `✅ 已连接: ${x.athlete || '未知账号'}`
-        : (x.client_id ? '⏸️ 配置了 client_id,点连接完成 OAuth' : '⏸️ 未连接');
     } catch { status.textContent = '❌ 加载失败'; }
     modal.style.display = 'flex';
   });
@@ -631,15 +619,6 @@ function initSettings() {
         expires_at: (_currentCfg.strava || {}).expires_at || 0,
         athlete: (_currentCfg.strava || {}).athlete || '',
         auto_sync: stravaAuto.checked,
-      },
-      xingzhe: {
-        client_id: xingzheId.value.trim(),
-        client_secret: xingzheSecret.value.trim(),
-        refresh_token: (_currentCfg.xingzhe || {}).refresh_token || '',
-        access_token: (_currentCfg.xingzhe || {}).access_token || '',
-        expires_at: (_currentCfg.xingzhe || {}).expires_at || 0,
-        athlete: (_currentCfg.xingzhe || {}).athlete || '',
-        auto_sync: xingzheAuto.checked,
       },
     };
     await fetch('/config', {
@@ -726,51 +705,6 @@ function initSettings() {
     helpModal.style.display = 'none';
   });
   helpModal?.addEventListener('click', (e) => { if (e.target === helpModal) helpModal.style.display = 'none'; });
-
-  // 行者连接/断开
-  document.getElementById('xingzheConnectBtn')?.addEventListener('click', async () => {
-    if (!xingzheId.value.trim() || !xingzheSecret.value.trim()) {
-      xingzheStatus.textContent = '❌ 请先填入 client_id 和 client_secret,点保存';
-      return;
-    }
-    const cfg = {
-      obsidian: { enabled: enabled.checked, vault_path: pathInput.value.trim() },
-      server: { port: 8080, auto_open_browser: true },
-      strava: {
-        client_id: stravaId.value.trim(),
-        client_secret: stravaSecret.value.trim(),
-        refresh_token: (_currentCfg.strava || {}).refresh_token || '',
-        access_token: (_currentCfg.strava || {}).access_token || '',
-        expires_at: (_currentCfg.strava || {}).expires_at || 0,
-        athlete: (_currentCfg.strava || {}).athlete || '',
-        auto_sync: stravaAuto.checked,
-      },
-      xingzhe: {
-        client_id: xingzheId.value.trim(),
-        client_secret: xingzheSecret.value.trim(),
-        refresh_token: (_currentCfg.xingzhe || {}).refresh_token || '',
-        access_token: (_currentCfg.xingzhe || {}).access_token || '',
-        expires_at: (_currentCfg.xingzhe || {}).expires_at || 0,
-        athlete: (_currentCfg.xingzhe || {}).athlete || '',
-        auto_sync: xingzheAuto.checked,
-      },
-    };
-    await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg) });
-    _currentCfg = cfg;
-    xingzheStatus.textContent = '⏳ 跳到行者授权…';
-    window.location.href = '/xingzhe/connect';
-  });
-
-  document.getElementById('xingzheDisconnectBtn')?.addEventListener('click', async () => {
-    if (!confirm('确定断开行者连接？')) return;
-    await fetch('/xingzhe/disconnect', { method: 'POST' });
-    _currentCfg.xingzhe = (_currentCfg.xingzhe || {});
-    _currentCfg.xingzhe.refresh_token = '';
-    _currentCfg.xingzhe.access_token = '';
-    _currentCfg.xingzhe.expires_at = 0;
-    _currentCfg.xingzhe.athlete = '';
-    xingzheStatus.textContent = '⏸️ 已断开';
-  });
 }
 
 // 检查 URL 是否有 ?strava=connected 这种回调标记
@@ -780,15 +714,6 @@ function handleStravaUrlFlag() {
     showStatus('✅ Strava 已连接', 'ok');
     setTimeout(() => showStatus('点击或拖拽 .fit 文件到此处上传', 'info'), 3000);
     // 清理 URL
-    history.replaceState(null, '', location.pathname);
-  }
-}
-
-function handleXingzheUrlFlag() {
-  const params = new URLSearchParams(location.search);
-  if (params.get('xingzhe') === 'connected') {
-    showStatus('✅ 行者已连接', 'ok');
-    setTimeout(() => showStatus('点击或拖拽 .fit 文件到此处上传', 'info'), 3000);
     history.replaceState(null, '', location.pathname);
   }
 }
@@ -1106,19 +1031,6 @@ async function finalizeUpload(parsed, file) {
       } else if (s.client_id) {
         syncHints += ` <a href="#" id="stravaHint_${ride.id}" style="color:#FC4C02;font-size:12px">Strava</a>`;
       }
-      const x = cfg.xingzhe || {};
-      if (x.refresh_token) {
-        if (x.auto_sync) {
-          syncToXingzhe(base64, `${ride.date} ${ride.route}`, file.name).then(msg => {
-            if (msg) showStatus(`✅ ${file.name} 解析成功！${parsed.distance_km}km · ${msg}`, 'ok');
-            setTimeout(() => showStatus('点击或拖拽 .fit 文件到此处上传', 'info'), 6000);
-          });
-        } else {
-          syncHints += ` <button class="strava-sync-btn" id="xingzheSyncBtn_${ride.id}"><i data-lucide="cloud" class="lci"></i> 行者</button>`;
-        }
-      } else if (x.client_id) {
-        syncHints += ` <a href="#" id="xingzheHint_${ride.id}" style="color:#1a73e8;font-size:12px">行者</a>`;
-      }
     } catch {}
   }
   const hintLabel = syncHints ? ` · 同步:${syncHints}` : '';
@@ -1129,9 +1041,7 @@ async function finalizeUpload(parsed, file) {
         e.preventDefault();
         btn.disabled = true;
         btn.textContent = '⏳ 上传中…';
-        let msg;
-        if (btn.id.startsWith('strava')) msg = await syncToStrava(base64, ride, file.name);
-        else msg = await syncToXingzhe(base64, `${ride.date} ${ride.route}`, file.name);
+        const msg = await syncToStrava(base64, ride, file.name);
         btn.textContent = msg || '✅ 已上传';
         if (window.lucide) lucide.createIcons();
         setTimeout(() => showStatus('点击或拖拽 .fit 文件到此处上传', 'info'), 5000);
@@ -1171,21 +1081,6 @@ async function syncToStrava(base64, ride, filename) {
     return '⏳ Strava 处理中,稍后在 Strava 端查看';
   } catch (e) {
     return '❌ Strava 同步失败: ' + e.message;
-  }
-}
-
-async function syncToXingzhe(base64, name, filename) {
-  try {
-    const res = await fetch('/xingzhe/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file_base64: base64, name: name, fit_filename: filename }),
-    });
-    const data = await res.json();
-    if (!res.ok || data.error) return `❌ 行者: ${data.error || '上传失败'}`;
-    return '✅ 行者已同步';
-  } catch (e) {
-    return '❌ 行者同步失败: ' + e.message;
   }
 }
 
