@@ -1128,7 +1128,7 @@ function buildRideObject(parsed, filename) {
     distance_km: parsed.distance_km || 0, avg_speed_kmh: parsed.avg_speed_kmh || 0, max_speed_kmh: parsed.max_speed_kmh || 0,
     avg_hr: parsed.avg_hr || 0, max_hr: parsed.max_hr || 0, calories: parsed.calories || 0,
     elev_gain_m: parsed.elev_gain_m || 0, min_alt_m: parsed.min_alt_m || 0, max_alt_m: parsed.max_alt_m || 0,
-    moving_time_min: parsed.moving_time_min || 0, num_laps: parsed.num_laps || 0, manual_laps: parsed.manual_laps || 0,
+    moving_time_min: parsed.moving_time_min || 0, num_laps: parsed.num_laps || parsed.manual_laps || 0, manual_laps: parsed.manual_laps || 0,
     notes: parsed.notes || '',
     hr_zones: parsed.hr_zones || { zone1: 0, zone2: 0, zone3: 0, zone4: 0, zone5: 0 },
     has_cadence: !!parsed.has_cadence, avg_cadence: parsed.avg_cadence || 0, max_cadence: parsed.max_cadence || 0,
