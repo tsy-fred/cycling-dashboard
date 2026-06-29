@@ -33,6 +33,8 @@ let pendingUploadData = null;
 let _sortCol = 'date';
 let _sortAsc = false;
 let _rsSortCol = null;
+const _PAGE_SIZE = 10;
+let _currentPage = 1;
 let _rsSortAsc = true;
 let _statsScope = localStorage.getItem('cycling-dashboard:statsScope') || 'all';
 
@@ -159,7 +161,13 @@ function sortRides() {
 
 function initTable() {
   const sorted = _sortCol ? sortRides() : [...RIDES].reverse();
-  document.getElementById('rt').innerHTML = sorted.map(r => {
+  const total = sorted.length;
+  const totalPages = Math.max(1, Math.ceil(total / _PAGE_SIZE));
+  _currentPage = Math.min(_currentPage, totalPages);
+  const start = (_currentPage - 1) * _PAGE_SIZE;
+  const pageItems = sorted.slice(start, start + _PAGE_SIZE);
+
+  document.getElementById('rt').innerHTML = pageItems.map(r => {
     const idx = RIDES.indexOf(r);
     return `<tr onclick="window.showRide(${idx})" data-i="${idx}">` +
       `<td style="white-space:nowrap">${(r.date || '').replace(/-/g, '/')}</td>` +
@@ -174,11 +182,44 @@ function initTable() {
     th.classList.toggle('sort-asc', _sortCol === col && _sortAsc);
     th.classList.toggle('sort-desc', _sortCol === col && !_sortAsc);
   });
+
+  renderPagination(total, totalPages);
+}
+
+function renderPagination(total, totalPages) {
+  const wrap = document.getElementById('rtablePagination') || document.createElement('div');
+  wrap.id = 'rtablePagination';
+  wrap.className = 'pagination';
+  if (totalPages <= 1) {
+    wrap.style.display = 'none';
+  } else {
+    wrap.style.display = 'flex';
+    const prevDisabled = _currentPage <= 1 ? 'disabled' : '';
+    const nextDisabled = _currentPage >= totalPages ? 'disabled' : '';
+    wrap.innerHTML =
+      `<button ${prevDisabled} onclick="window.changePage(-1)">上一页</button>` +
+      `<span class="page-info">第 ${_currentPage} / ${totalPages} 页 · 共 ${total} 条</span>` +
+      `<button ${nextDisabled} onclick="window.changePage(1)">下一页</button>`;
+  }
+  const table = document.querySelector('#rt').closest('table');
+  if (table && table.nextElementSibling !== wrap) {
+    table.parentNode.insertBefore(wrap, table.nextElementSibling);
+  }
+}
+
+window.changePage = function(delta) {
+  const sorted = _sortCol ? sortRides() : [...RIDES].reverse();
+  const totalPages = Math.max(1, Math.ceil(sorted.length / _PAGE_SIZE));
+  const np = _currentPage + delta;
+  if (np < 1 || np > totalPages) return;
+  _currentPage = np;
+  initTable();
 }
 
 window.toggleSort = function(col) {
   if (_sortCol === col) { _sortAsc = !_sortAsc; }
   else { _sortCol = col; _sortAsc = true; }
+  _currentPage = 1;
   initTable();
 }
 
@@ -351,6 +392,10 @@ window.deleteRide = function(i) {
   const usedRoutes = new Set(RIDES.map(r => r.route));
   for (const route of Object.keys(RC)) { if (!usedRoutes.has(route)) { delete RC[route]; const ri = RO.indexOf(route); if (ri >= 0) RO.splice(ri, 1); } }
   clearSpeedHeatmap();
+  // 删除后若当前页已空则回到上一页
+  const sorted = _sortCol ? sortRides() : [...RIDES].reverse();
+  const totalPages = Math.max(1, Math.ceil(sorted.length / _PAGE_SIZE));
+  if (_currentPage > totalPages) _currentPage = Math.max(1, totalPages);
   refreshAll();
   switchToMonthly();
   saveAllRides();
