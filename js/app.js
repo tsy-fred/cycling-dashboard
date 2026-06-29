@@ -728,6 +728,17 @@ function initSettings() {
   const hrZInputs = [document.getElementById('hrZ2'), document.getElementById('hrZ3'), document.getElementById('hrZ4'), document.getElementById('hrZ5')];
   if (!btn || !modal) return;
 
+  // 设置 Tab 切换
+  modal.querySelectorAll('.settings-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      modal.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+      modal.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      const panel = modal.querySelector(`.settings-panel[data-panel="${tab.dataset.tab}"]`);
+      if (panel) panel.classList.add('active');
+    });
+  });
+
   let _currentCfg = {};
 
   function readProfileFromUI() {
