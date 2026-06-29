@@ -24,6 +24,45 @@ const COLOR_PALETTE = [
 
 const GPS_MATCH_KM = 0.5;
 
+// 心率分区默认阈值 (Z2/Z3/Z4/Z5 起点)
+const DEFAULT_HR_THRESHOLDS = [140, 152, 164, 176];
+const DEFAULT_PROFILE = { age: 0, resting_hr: 0, zone_mode: 'auto', zone_thresholds: [...DEFAULT_HR_THRESHOLDS] };
+let _profile = { ...DEFAULT_PROFILE };
+
+function calculateHRThresholds(profile) {
+  const p = profile || _profile || DEFAULT_PROFILE;
+  if (p.zone_mode === 'manual' && Array.isArray(p.zone_thresholds) && p.zone_thresholds.length === 4) {
+    return p.zone_thresholds.map(v => +v).sort((a, b) => a - b);
+  }
+  const age = +p.age || 0;
+  const rest = +p.resting_hr || 0;
+  if (age <= 0 || rest <= 0) return [...DEFAULT_HR_THRESHOLDS];
+  const maxHr = 220 - age;
+  const hrr = maxHr - rest;
+  const ratios = [0.6, 0.7, 0.8, 0.9];
+  return ratios.map(r => Math.round(rest + hrr * r));
+}
+
+function calculateHRZones(hrs, thresholds) {
+  const t = thresholds || DEFAULT_HR_THRESHOLDS;
+  const zones = { zone1: 0, zone2: 0, zone3: 0, zone4: 0, zone5: 0 };
+  for (const hr of hrs) {
+    if (hr < t[0]) zones.zone1++;
+    else if (hr < t[1]) zones.zone2++;
+    else if (hr < t[2]) zones.zone3++;
+    else if (hr < t[3]) zones.zone4++;
+    else zones.zone5++;
+  }
+  const total = hrs.length || 1;
+  for (const k of Object.keys(zones)) zones[k] = +(zones[k] / total * 100).toFixed(1);
+  return zones;
+}
+
+function formatHRZonePreview(profile) {
+  const t = calculateHRThresholds(profile);
+  return `Z1 < ${t[0]} · Z2 ${t[0]}-${t[1] - 1} · Z3 ${t[1]}-${t[2] - 1} · Z4 ${t[2]}-${t[3] - 1} · Z5 ≥ ${t[3]}`;
+}
+
 let RIDES = [];
 let RC = {};
 let RO = [];
@@ -42,6 +81,14 @@ let _statsScope = localStorage.getItem('cycling-dashboard:statsScope') || 'all';
 if (window.lucide) lucide.createIcons();
 
 document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const cfgRes = await fetch('/config');
+    if (cfgRes.ok) {
+      const cfg = await cfgRes.json();
+      _profile = { ...DEFAULT_PROFILE, ...(cfg.profile || {}) };
+    }
+  } catch { /* ignore */ }
+
   try {
     const data = await loadRides();
     RIDES = data.records || [];
@@ -672,9 +719,36 @@ function initSettings() {
   const stravaSecret = document.getElementById('stravaClientSecret');
   const stravaStatus = document.getElementById('stravaStatus');
   const stravaAuto = document.getElementById('stravaAutoSync');
+  const hrZoneAuto = document.getElementById('hrZoneAuto');
+  const hrZoneManual = document.getElementById('hrZoneManual');
+  const hrZoneAge = document.getElementById('hrZoneAge');
+  const hrZoneRest = document.getElementById('hrZoneRest');
+  const hrZoneThresholds = document.getElementById('hrZoneThresholds');
+  const hrZonePreview = document.getElementById('hrZonePreview');
+  const hrZInputs = [document.getElementById('hrZ2'), document.getElementById('hrZ3'), document.getElementById('hrZ4'), document.getElementById('hrZ5')];
   if (!btn || !modal) return;
 
   let _currentCfg = {};
+
+  function readProfileFromUI() {
+    return {
+      age: parseInt(hrZoneAge.value, 10) || 0,
+      resting_hr: parseInt(hrZoneRest.value, 10) || 0,
+      zone_mode: hrZoneManual.checked ? 'manual' : 'auto',
+      zone_thresholds: hrZInputs.map(i => parseInt(i.value, 10) || 0),
+    };
+  }
+
+  function updateHRZonePreview() {
+    const p = readProfileFromUI();
+    hrZonePreview.textContent = formatHRZonePreview(p);
+    hrZoneThresholds.style.display = p.zone_mode === 'manual' ? 'flex' : 'none';
+  }
+
+  [hrZoneAuto, hrZoneManual, hrZoneAge, hrZoneRest, ...hrZInputs].forEach(el => {
+    el?.addEventListener('input', updateHRZonePreview);
+    el?.addEventListener('change', updateHRZonePreview);
+  });
 
   btn.addEventListener('click', async () => {
     try {
@@ -692,11 +766,21 @@ function initSettings() {
       stravaStatus.textContent = s.refresh_token
         ? `✅ 已连接: ${s.athlete || '未知账号'}`
         : (s.client_id ? '⏸️ 配置了 client_id,点连接完成 OAuth' : '⏸️ 未连接');
+      const p = cfg.profile || DEFAULT_PROFILE;
+      _profile = { ...DEFAULT_PROFILE, ...p };
+      hrZoneAuto.checked = _profile.zone_mode !== 'manual';
+      hrZoneManual.checked = _profile.zone_mode === 'manual';
+      hrZoneAge.value = _profile.age || '';
+      hrZoneRest.value = _profile.resting_hr || '';
+      (_profile.zone_thresholds || DEFAULT_HR_THRESHOLDS).forEach((v, i) => { if (hrZInputs[i]) hrZInputs[i].value = v || ''; });
+      updateHRZonePreview();
     } catch { status.textContent = '❌ 加载失败'; }
     modal.style.display = 'flex';
   });
 
   document.getElementById('settingsSave').onclick = async () => {
+    const profile = readProfileFromUI();
+    _profile = profile;
     const cfg = {
       obsidian: {
         enabled: enabled.checked,
@@ -712,6 +796,7 @@ function initSettings() {
         athlete: (_currentCfg.strava || {}).athlete || '',
         auto_sync: stravaAuto.checked,
       },
+      profile,
     };
     await fetch('/config', {
       method: 'POST',
@@ -935,16 +1020,7 @@ function buildParsedFromFitFile(data, filename) {
   const laps = data.laps || [];
 
   const hrs = records.filter(r => r.heart_rate > 0).map(r => r.heart_rate);
-  const hrZones = { zone1: 0, zone2: 0, zone3: 0, zone4: 0, zone5: 0 };
-  for (const hr of hrs) {
-    if (hr < 140) hrZones.zone1++;
-    else if (hr < 152) hrZones.zone2++;
-    else if (hr < 164) hrZones.zone3++;
-    else if (hr < 176) hrZones.zone4++;
-    else hrZones.zone5++;
-  }
-  const th = hrs.length || 1;
-  for (const k of Object.keys(hrZones)) hrZones[k] = +(hrZones[k] / th * 100).toFixed(1);
+  const hrZones = calculateHRZones(hrs, calculateHRThresholds(_profile));
 
   const cads = records.filter(r => r.cadence > 0).map(r => r.cadence);
   function bjISO(d) {

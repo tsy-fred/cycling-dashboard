@@ -25,8 +25,42 @@ from datetime import datetime, timedelta, timezone
 BEIJING_TZ = timezone(timedelta(hours=8))
 
 # Apple Watch 5-zone HRR model (Garmin/Watch default zones)
-HR_ZONE_BOUNDARIES = [140, 152, 164, 176]  # Z2@140, Z3@152, Z4@164, Z5@176
+DEFAULT_HR_ZONE_BOUNDARIES = [140, 152, 164, 176]  # Z2@140, Z3@152, Z4@164, Z5@176
 ZONE_LABELS = ["zone1", "zone2", "zone3", "zone4", "zone5"]
+
+# ── Config / profile loading ───────────────────────────────────────────
+
+def load_profile():
+    """Load user profile from config.json for HR zone calculation."""
+    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
+    if not os.path.exists(config_path):
+        return None
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        profile = cfg.get("profile")
+        if not profile:
+            return None
+        mode = profile.get("zone_mode", "auto")
+        if mode == "manual":
+            thresholds = profile.get("zone_thresholds")
+            if isinstance(thresholds, list) and len(thresholds) == 4:
+                return sorted(int(v) for v in thresholds)
+        age = int(profile.get("age") or 0)
+        resting = int(profile.get("resting_hr") or 0)
+        if age > 0 and resting > 0:
+            max_hr = 220 - age
+            hrr = max_hr - resting
+            ratios = [0.6, 0.7, 0.8, 0.9]
+            return [round(resting + hrr * r) for r in ratios]
+    except Exception:
+        pass
+    return None
+
+
+def get_hr_zone_boundaries():
+    return load_profile() or DEFAULT_HR_ZONE_BOUNDARIES
+
 
 # ── Helpers ────────────────────────────────────────────────────────────
 
@@ -145,18 +179,19 @@ def parse_fit(filepath):
         min_alt = max_alt = elev_gain = 0.0
 
     # ── Heart rate zones ──
+    hr_zone_boundaries = get_hr_zone_boundaries()
     hr_values = [r['heart_rate'] for r in records
                  if r.get('heart_rate') is not None and r['heart_rate'] > 0]
     if hr_values:
         zones = {z: 0 for z in ZONE_LABELS}
         for hr in hr_values:
-            if hr < HR_ZONE_BOUNDARIES[0]:
+            if hr < hr_zone_boundaries[0]:
                 zones["zone1"] += 1
-            elif hr < HR_ZONE_BOUNDARIES[1]:
+            elif hr < hr_zone_boundaries[1]:
                 zones["zone2"] += 1
-            elif hr < HR_ZONE_BOUNDARIES[2]:
+            elif hr < hr_zone_boundaries[2]:
                 zones["zone3"] += 1
-            elif hr < HR_ZONE_BOUNDARIES[3]:
+            elif hr < hr_zone_boundaries[3]:
                 zones["zone4"] += 1
             else:
                 zones["zone5"] += 1

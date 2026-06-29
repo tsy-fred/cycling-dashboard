@@ -53,6 +53,12 @@ def load_config():
             "athlete": "",
             "auto_sync": False,
         },
+        "profile": {
+            "age": 0,
+            "resting_hr": 0,
+            "zone_mode": "auto",
+            "zone_thresholds": [140, 152, 164, 176],
+        },
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -64,6 +70,9 @@ def load_config():
                 cfg["strava"].setdefault(k, v)
             for k, v in default["xingzhe"].items():
                 cfg["xingzhe"].setdefault(k, v)
+            cfg.setdefault("profile", default["profile"])
+            for k, v in default["profile"].items():
+                cfg["profile"].setdefault(k, v)
             return cfg
         except Exception:
             pass

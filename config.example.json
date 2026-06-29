@@ -19,5 +19,12 @@
     "athlete": "",
     "auto_sync": false,
     "_hint": "Strava 同步配置。先去 https://www.strava.com/settings/api 注册一个 API Application（Callback Domain 填 localhost），把 client_id / client_secret 粘到设置面板，点连接后会自动 OAuth 拿到 refresh_token"
+  },
+  "profile": {
+    "age": 0,
+    "resting_hr": 0,
+    "zone_mode": "auto",
+    "zone_thresholds": [140, 152, 164, 176],
+    "_hint": "心率分区设置。zone_mode=auto 时按年龄和静息心率用 Karvonen 公式自动算；zone_mode=manual 时用 zone_thresholds 的 4 个阈值(Z2/Z3/Z4/Z5 起点)"
   }
 }
