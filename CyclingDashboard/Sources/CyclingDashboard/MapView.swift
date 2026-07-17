@@ -9,11 +9,13 @@ struct MapView: View {
     var body: some View {
         Map(position: $camera) {
             ForEach(store.routes, id: \.self) { route in
-                let points = ridesPoints(for: route)
                 let isSelected = selectedRoute == route
-                if !points.isEmpty {
-                    MapPolyline(coordinates: points)
-                        .stroke(routeColor(route, isSelected: isSelected), style: StrokeStyle(lineWidth: isSelected ? 5 : 2, lineCap: .round, lineJoin: .round))
+                ForEach(store.ridesByRoute[route] ?? []) { ride in
+                    let points = ride.trackPoints.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) }
+                    if !points.isEmpty {
+                        MapPolyline(coordinates: points)
+                            .stroke(routeColor(route, isSelected: isSelected), style: StrokeStyle(lineWidth: isSelected ? 5 : 2, lineCap: .round, lineJoin: .round))
+                    }
                 }
             }
 
@@ -36,11 +38,6 @@ struct MapView: View {
             MapPitchToggle()
             MapCompass()
         }
-    }
-
-    func ridesPoints(for route: String) -> [CLLocationCoordinate2D] {
-        let rides = store.ridesByRoute[route] ?? []
-        return rides.flatMap { $0.trackPoints.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) } }
     }
 
     func routeStart(for route: String) -> CLLocationCoordinate2D? {
