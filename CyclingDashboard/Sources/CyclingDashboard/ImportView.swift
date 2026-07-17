@@ -42,16 +42,21 @@ struct ImportView: View {
                 TextField("路线名称", text: $routeName)
                     .frame(width: 300)
                     .textFieldStyle(.roundedBorder)
-                HStack {
-                    Button("取消") { dismiss() }
-                        .foregroundStyle(AppTheme.text)
+            }
+
+            Spacer()
+
+            HStack {
+                Button("取消") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                    .foregroundStyle(AppTheme.text)
+                Spacer()
+                if parsed != nil {
                     Button("导入") { confirmImport() }
                         .buttonStyle(.borderedProminent)
                         .tint(AppTheme.primary)
                 }
             }
-
-            Spacer()
         }
         .padding()
         .frame(width: 420, height: 250)
