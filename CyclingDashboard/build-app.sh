@@ -2,10 +2,15 @@
 set -e
 
 APP_NAME="CyclingDashboard"
-BUILD_DIR=".build/release"
+CONFIG="${1:-release}"   # 用法: ./build-app.sh [debug|release]
+BUILD_DIR=".build/$CONFIG"
 APP_DIR="$BUILD_DIR/$APP_NAME.app"
 
-swift build -c release
+if [[ "$CONFIG" == "debug" ]]; then
+    swift build          # 增量编译, 几秒
+else
+    swift build -c release
+fi
 
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
@@ -45,4 +50,5 @@ EOF
 
 codesign --force --deep --sign - "$APP_DIR"
 
-echo "Built: $APP_DIR"
+echo "Built ($CONFIG): $APP_DIR"
+echo "打开: open $APP_DIR"

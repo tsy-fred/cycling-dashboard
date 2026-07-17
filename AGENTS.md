@@ -10,9 +10,10 @@ macOS app 主界面：地图首屏 + 下方统计卡片/路线卡/最近骑行�
 
 ```bash
 cd CyclingDashboard
-swift build                  # 调试编译
-./build-app.sh               # 生成 .build/release/CyclingDashboard.app
+./build-app.sh debug         # 日常验收: 增量编译, 生成 .build/debug/CyclingDashboard.app
+./build-app.sh               # 发布: release 全量编译, 生成 .build/release/CyclingDashboard.app
 # 从 Finder 打开 .app，首次运行通过「项目 > 选择项目文件夹」指向仓库根目录
+# 也可用 Xcode 直接打开 Package.swift, Cmd+R 增量编译 + SwiftUI Preview
 ```
 
 ## Quick Start (Web)
