@@ -5,6 +5,12 @@ import AppKit
 struct CyclingDashboardApp: App {
     @State private var store = DataStore()
 
+    init() {
+        // 裸二进制从终端/调试器启动时不会自动成为前台 app, 手动激活
+        NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
     var body: some Scene {
         WindowGroup {
             DashboardView()
