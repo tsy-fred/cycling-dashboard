@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import MapKit
 
 @Observable
 class DataStore {
@@ -7,6 +8,7 @@ class DataStore {
     var locations: [Location] = []
     var routeColors: [String: String] = [:]
     var routeOrder: [String] = []
+    var coordsCache: [String: [CLLocationCoordinate2D]] = [:]
 
     var projectRoot: URL {
         if let saved = UserDefaults.standard.url(forKey: "projectRoot"), FileManager.default.fileExists(atPath: saved.appendingPathComponent("data").path) {
@@ -52,9 +54,21 @@ class DataStore {
             let data = try Data(contentsOf: ridesURL)
             let decoded = try JSONDecoder().decode(RidesData.self, from: data)
             rides = decoded.records
+            rebuildCoordsCache()
         } catch {
             print("load rides failed: \(error)")
         }
+    }
+
+    func rebuildCoordsCache() {
+        coordsCache = Dictionary(uniqueKeysWithValues: rides.map {
+            ($0.id, $0.trackPoints.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) })
+        })
+    }
+
+    func coords(for ride: Ride) -> [CLLocationCoordinate2D] {
+        if let c = coordsCache[ride.id] { return c }
+        return ride.trackPoints.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) }
     }
 
     func loadLocations() {
@@ -113,6 +127,7 @@ class DataStore {
 
     func addRide(_ ride: Ride) {
         rides.append(ride)
+        coordsCache[ride.id] = ride.trackPoints.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) }
         if !routeOrder.contains(ride.route) {
             routeOrder.append(ride.route)
         }
@@ -124,6 +139,7 @@ class DataStore {
 
     func deleteRide(id: String) {
         rides.removeAll { $0.id == id }
+        coordsCache.removeValue(forKey: id)
         saveRides()
     }
 

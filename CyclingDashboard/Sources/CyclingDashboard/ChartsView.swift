@@ -3,7 +3,6 @@ import Charts
 
 struct ChartsView: View {
     var ride: Ride
-    @State private var selectedIdx: Int? = nil
 
     var sampled: [TrackPoint] {
         sampleTrackPoints(ride.trackPoints, target: 120)
@@ -112,7 +111,7 @@ struct ChartsView: View {
 }
 
 struct ChartPoint: Identifiable {
-    var id = UUID()
+    var id: Int { index }
     var index: Int
     var distance: Double
     var speed: Double

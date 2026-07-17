@@ -1,6 +1,6 @@
 import Foundation
 
-class FitParser {
+struct FitParser {
     var projectRoot: URL
 
     init(projectRoot: URL) {
@@ -8,23 +8,33 @@ class FitParser {
     }
 
     func parse(fitPath: URL) async -> ParsedRide? {
+        await withCheckedContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                cont.resume(returning: self.parseSync(fitPath: fitPath))
+            }
+        }
+    }
+
+    func parseSync(fitPath: URL) -> ParsedRide? {
         let script = projectRoot.appendingPathComponent("scripts/parse_fit.py")
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         task.arguments = ["python3", script.path, fitPath.path, "--pretty"]
         task.currentDirectoryURL = projectRoot
 
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = pipe
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        task.standardOutput = outPipe
+        task.standardError = errPipe
 
         do {
             try task.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let data = outPipe.fileHandleForReading.readDataToEndOfFile()
             task.waitUntilExit()
+            let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
 
             guard task.terminationStatus == 0 else {
-                print("parse_fit failed: \(String(data: data, encoding: .utf8) ?? "")")
+                print("parse_fit failed: \(String(data: errData, encoding: .utf8) ?? "")")
                 return nil
             }
 

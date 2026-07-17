@@ -11,7 +11,7 @@ struct MapView: View {
             ForEach(store.routes, id: \.self) { route in
                 let isSelected = selectedRoute == route
                 ForEach(store.ridesByRoute[route] ?? []) { ride in
-                    let points = ride.trackPoints.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) }
+                    let points = store.coords(for: ride)
                     if !points.isEmpty {
                         MapPolyline(coordinates: points)
                             .stroke(routeColor(route, isSelected: isSelected), style: StrokeStyle(lineWidth: isSelected ? 5 : 2, lineCap: .round, lineJoin: .round))
@@ -98,10 +98,10 @@ func cameraPosition(for points: [CLLocationCoordinate2D]) -> MapCameraPosition {
     guard points.count > 1 else { return .region(MKCoordinateRegion()) }
     let lats = points.map { $0.latitude }
     let lngs = points.map { $0.longitude }
-    let minLat = lats.min()!
-    let maxLat = lats.max()!
-    let minLng = lngs.min()!
-    let maxLng = lngs.max()!
+    let minLat = lats.min() ?? 0
+    let maxLat = lats.max() ?? 0
+    let minLng = lngs.min() ?? 0
+    let maxLng = lngs.max() ?? 0
     let center = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLng + maxLng) / 2)
     let span = MKCoordinateSpan(
         latitudeDelta: max(0.005, (maxLat - minLat) * 1.4),
