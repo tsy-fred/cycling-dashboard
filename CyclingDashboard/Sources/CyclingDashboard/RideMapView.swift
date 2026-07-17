@@ -9,10 +9,20 @@ struct RideMapView: View {
         ride.trackPoints.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) }
     }
 
+    var segmentCoords: [CLLocationCoordinate2D] {
+        guard let seg = ride.loopSegment,
+              seg.endIdx > seg.startIdx, seg.endIdx < coords.count else { return [] }
+        return Array(coords[seg.startIdx...seg.endIdx])
+    }
+
     var body: some View {
         Map(position: $camera) {
             MapPolyline(coordinates: coords)
                 .stroke(AppTheme.primary, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+            if !segmentCoords.isEmpty {
+                MapPolyline(coordinates: segmentCoords)
+                    .stroke(AppTheme.accentBlue, style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+            }
             if let start = coords.first {
                 Annotation("起", coordinate: start) {
                     StartMarker()

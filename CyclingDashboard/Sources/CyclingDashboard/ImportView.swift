@@ -99,6 +99,9 @@ struct ImportView: View {
             return
         }
         p.route = routeName
+        if p.loopSegment == nil, let seg = detectLoopSegment(p.trackPoints) {
+            p.loopSegment = seg
+        }
         store.importFitResult(p)
         dismiss()
     }
