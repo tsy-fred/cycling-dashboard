@@ -292,7 +292,9 @@ function drawStats(ctx, ride, w, h, isLight) {
     const row = Math.floor(idx / cols);
     const x = 60 + col * (cellW + gap);
     const y = gridTop + row * (cardH + gap);
-    const val = ride[s.key];
+    let val = ride[s.key];
+    // loop_segment.laps 优先
+    if (s.key === 'manual_laps' && ride.loop_segment && ride.loop_segment.laps > 0) val = ride.loop_segment.laps;
     const v = s.fmt ? s.fmt(val || 0) : (val || 0);
     drawStatCard(ctx, x, y, cellW, cardH, v, s.unit, s.label, isLight);
   });

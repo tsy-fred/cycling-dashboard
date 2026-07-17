@@ -23,7 +23,8 @@ import urllib.parse
 import urllib.error
 from urllib.parse import urlparse, parse_qs
 
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+WEB_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(WEB_DIR)
 CONFIG_FILE = os.path.join(PROJECT_DIR, "config.json")
 PARSE_SCRIPT = os.path.join(PROJECT_DIR, "scripts", "parse_fit.py")
 DATA_FILE = os.path.join(PROJECT_DIR, "data", "rides.json")
@@ -162,13 +163,18 @@ def get_strava_access_token():
 class CyclingHandler(http.server.SimpleHTTPRequestHandler):
     """自定义请求处理：静态文件 + 上传解析"""
 
+    def __init__(self, request, client_address, server):
+        super().__init__(request, client_address, server, directory=WEB_DIR)
+
     def do_OPTIONS(self):
         self.send_response(200)
         self.end_headers()
 
     def do_GET(self):
         parsed = urlparse(self.path)
-        if parsed.path == '/locations':
+        if parsed.path == '/data/rides.json':
+            self.handle_rides_json()
+        elif parsed.path == '/locations':
             self.handle_locations()
         elif parsed.path == '/export-md':
             self.handle_export_md()
@@ -254,6 +260,21 @@ class CyclingHandler(http.server.SimpleHTTPRequestHandler):
                 os.unlink(tmp_path)
             except OSError:
                 pass
+
+    # ── 数据文件（data/ 在仓库根，静态根是 web/）──
+
+    def handle_rides_json(self):
+        if not os.path.exists(DATA_FILE):
+            self.send_json({"error": "rides.json 不存在"}, 404)
+            return
+        with open(DATA_FILE, "rb") as f:
+            body = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
 
     # ── 保存骑行记录到 rides.json ──
 

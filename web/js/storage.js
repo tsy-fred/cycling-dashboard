@@ -7,7 +7,7 @@ let _data = null;
 
 export async function loadRides() {
   if (_data) return _data;
-  const res = await fetch('data/rides.json?t=' + Date.now());
+  const res = await fetch('/data/rides.json?t=' + Date.now());
   if (!res.ok) throw new Error(`加载数据失败: ${res.status}`);
   _data = await res.json();
   return _data;

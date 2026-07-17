@@ -71,6 +71,7 @@
           <button class="del-btn" id="shareBtn" onclick="window.openShareModal()" title="生成分享图" style="display:none"><i data-lucide="share-2" class="lci"></i></button>
           <button class="del-btn" id="delDetailBtn" onclick="window.deleteRide()" title="删除此记录" style="display:none"><i data-lucide="trash-2" class="lci"></i></button>
           <button class="del-btn" id="editDetailBtn" onclick="window.editRideName()" title="重命名路线" style="display:none"><i data-lucide="pencil" class="lci"></i></button>
+          <button class="del-btn" id="editSegmentBtn" onclick="window.editLoopSegment()" title="编辑绕圈段" style="display:none"><i data-lucide="layers" class="lci"></i></button>
         </div>
 
         <!-- 月度里程视图（默认） -->
@@ -112,6 +113,7 @@
                 <span id="notesStatus" style="font-size:11px;color:#999;line-height:28px"></span>
               </div>
             </div>
+
           </div>
         </div>
       </div>
@@ -444,5 +446,34 @@
       </div>
     </div>
   </div>
+  <!-- 绕圈段编辑弹窗 -->
+  <div class="modal-overlay" id="segmentModal" style="display:none">
+    <div class="modal-box" style="max-width:640px">
+      <div class="modal-title"><i data-lucide="layers" class="lci"></i> 编辑绕圈段 · <span id="segModalTitle" style="text-transform:none"></span></div>
+      <p class="modal-desc" id="segModalHint">点击「选起点」按钮，然后在小地图上点击选择绕圈起点</p>
+
+      <!-- 内嵌小地图 -->
+      <div id="segMiniMap" style="height:320px;border-radius:8px;margin:0 0 10px;border:1px solid #e8e8ec;background:#f8f9fb"></div>
+
+      <!-- 信息 -->
+      <div id="segModalInfo" style="font-size:12px;color:#888;min-height:18px;margin-bottom:8px"></div>
+
+      <!-- 控件 -->
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+        <button class="btn btn-secondary" onclick="window._segPickStart()">选起点</button>
+        <button class="btn btn-secondary" onclick="window._segPickEnd()">选终点</button>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:4px">
+          <span style="font-size:12px;color:#888">圈数</span>
+          <input type="number" id="segModalLaps" min="1" value="1" style="width:50px;padding:4px 6px;border:1px solid #ddd;border-radius:6px;font-size:12px;text-align:center">
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="window._segCancel()">取消</button>
+        <button class="btn btn-primary" id="segModalSave" onclick="window._segSave()" disabled>保存</button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

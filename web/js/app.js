@@ -4,7 +4,7 @@
  */
 
 import { loadRides } from './storage.js';
-import { initMap, rebuildMapLayers, initLegend, highlightRide, fitRideBounds, placeCrosshair, clearCrosshair, setPolylineStyle, resetPolylineStyles, fitBoundsToPoints, renderLocations, setContextMenuHandler, renderSpeedHeatmap, clearSpeedHeatmap } from './map.js';
+import { initMap, rebuildMapLayers, initLegend, highlightRide, fitRideBounds, placeCrosshair, clearCrosshair, setPolylineStyle, resetPolylineStyles, fitBoundsToPoints, renderLocations, setContextMenuHandler, renderSpeedHeatmap, clearSpeedHeatmap, highlightSegment, clearSegmentHighlight } from './map.js';
 import { initMonthlyChart, renderDetail, renderSelectedHR } from './charts.js';
 import { loadLocations, getLocations, addLocation, removeLocation, renameLocation, findNearestLocation, saveLocations } from './locations.js';
 import { setupExportModal, openShareModal as openShareModalImpl } from './export.js';
@@ -291,6 +291,7 @@ function switchToMonthly() {
   document.getElementById('editDetailBtn').style.display = 'none';
   document.getElementById('rideNotes').style.display = 'none';
   document.getElementById('selHR').style.display = 'none';
+  _destroySegmentModal();
   _currentViewIdx = -1;
 }
 
@@ -309,9 +310,10 @@ window.showRide = function(i) {
   if (!r) return;
   _currentViewIdx = i;
   let lapInfo = '';
-  // 直接按圈数显示,不卡 isLoop(避免「起终点不重合」的绕圈被吞掉)
   let laps = 0;
-  if (r.manual_laps > 0) laps = r.manual_laps;
+  // loop_segment.laps 优先
+  if (r.loop_segment && r.loop_segment.laps > 0) laps = r.loop_segment.laps;
+  else if (r.manual_laps > 0) laps = r.manual_laps;
   else if (r.track_points && r.track_points.length > 10) laps = countLaps(r.track_points);
   if (laps >= 1) {
     const avgLapMin = r.moving_time_min ? (r.moving_time_min / laps) : 0;
@@ -321,6 +323,7 @@ window.showRide = function(i) {
   switchToDetail(`${r.date} · ${r.route}${lapInfo} · ${r.distance_km}km · ${r.start_time || ''}-${r.end_time || ''}`);
   document.getElementById('delDetailBtn').style.display = 'inline-flex';
   document.getElementById('editDetailBtn').style.display = 'inline-flex';
+  document.getElementById('editSegmentBtn').style.display = (r.loop_segment || laps > 1) ? 'inline-flex' : 'none';
   document.querySelectorAll('#rt tr').forEach(el => el.classList.remove('act'));
   const row = document.querySelector(`#rt tr[data-i="${i}"]`);
   if (row) row.classList.add('act');
@@ -458,6 +461,7 @@ async function saveAllRides() {
       num_laps: r.num_laps, manual_laps: r.manual_laps, hr_zones: r.hr_zones, notes: r.notes,
       has_cadence: r.has_cadence, avg_cadence: r.avg_cadence, max_cadence: r.max_cadence,
       track_points: r.track_points, start_lat: r.start_lat, start_lng: r.start_lng, end_lat: r.end_lat, end_lng: r.end_lng,
+      loop_segment: r.loop_segment || null,
     }));
     await fetch('/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ _replace: true, records }) });
   } catch (e) { console.warn('保存失败:', e); }
@@ -476,6 +480,195 @@ window.editLaps = function(i) {
   saveAllRides();
   window.showRide(idx);
 };
+
+// ── 绕圈段编辑（弹窗内嵌小地图） ──
+
+let _segEditState = null;
+
+window.editLoopSegment = function(i) {
+  const idx = i !== undefined ? i : _currentViewIdx;
+  if (idx < 0 || idx >= RIDES.length) return;
+  const ride = RIDES[idx];
+  if (!ride.track_points || ride.track_points.length < 20) { showStatus('轨迹点不足', 'err'); return; }
+  if (_segEditState) _destroySegmentModal();
+  const seg = ride.loop_segment || null;
+  _segEditState = {
+    idx, phase: 'start',
+    startIdx: seg ? seg.start_idx : -1,
+    endIdx: seg ? seg.end_idx : -1,
+    laps: seg ? seg.laps : (ride.manual_laps || countLaps(ride.track_points) || 1),
+    miniMap: null, miniPolyline: null, miniMarkers: [], miniSegLayer: null,
+  };
+  _showSegmentModal(ride);
+};
+
+function _showSegmentModal(ride) {
+  const modal = document.getElementById('segmentModal');
+  modal.style.display = 'flex';
+  document.getElementById('segModalTitle').textContent = ride.route;
+  _updateSegModalHint();
+  document.getElementById('segModalInfo').textContent = '';
+  document.getElementById('segModalSave').disabled = true;
+  document.getElementById('segModalLaps').value = _segEditState.laps;
+
+  // 创建内嵌小地图
+  const container = document.getElementById('segMiniMap');
+  container.innerHTML = '';
+  const miniMap = L.map(container, { zoomControl: true, attributionControl: false });
+  L.tileLayer('https://cartodb-basemaps-{s}.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(miniMap);
+
+  const pts2d = ride.track_points.map(p => [p[0], p[1]]);
+  _segEditState.miniPolyline = L.polyline(pts2d, { color: '#999', weight: 2, opacity: 0.5 }).addTo(miniMap);
+  miniMap.fitBounds(_segEditState.miniPolyline.getBounds().pad(0.1));
+
+  // 如果已有 loop_segment，直接在小地图上显示
+  if (_segEditState.startIdx >= 0 && _segEditState.endIdx > _segEditState.startIdx) {
+    _updateMiniMapHighlight(ride.track_points);
+    _updateSegModalInfo(ride);
+    _updateSegModalHint();
+    document.getElementById('segModalLaps').value = _segEditState.laps;
+    document.getElementById('segModalSave').disabled = false;
+  }
+
+  // 小地图点击选点
+  miniMap.on('click', (e) => {
+    if (_segEditState.phase === 'start' || _segEditState.phase === 'end') {
+      let bestIdx = 0, bestDist = Infinity;
+      for (let i = 0; i < ride.track_points.length; i++) {
+        const d = haversineKm(e.latlng.lat, e.latlng.lng, ride.track_points[i][0], ride.track_points[i][1]);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+      }
+      if (_segEditState.phase === 'start') {
+        _segEditState.startIdx = bestIdx;
+        _segEditState.phase = 'end';
+      } else {
+        _segEditState.endIdx = bestIdx;
+        _segEditState.phase = 'done';
+        if (_segEditState.startIdx > _segEditState.endIdx) {
+          [_segEditState.startIdx, _segEditState.endIdx] = [_segEditState.endIdx, _segEditState.startIdx];
+        }
+        _segEditState.laps = countLapsInSegment(ride.track_points, _segEditState.startIdx, _segEditState.endIdx);
+        document.getElementById('segModalLaps').value = _segEditState.laps;
+        document.getElementById('segModalSave').disabled = false;
+      }
+      _updateMiniMapDots(ride.track_points);
+      _updateMiniMapHighlight(ride.track_points);
+      _updateSegModalInfo(ride);
+      _updateSegModalHint();
+    }
+  });
+
+  _segEditState.miniMap = miniMap;
+  setTimeout(() => miniMap.invalidateSize(), 100);
+}
+
+function _updateMiniMapDots(trackPoints) {
+  _segEditState.miniMarkers.forEach(m => _segEditState.miniMap.removeLayer(m));
+  _segEditState.miniMarkers = [];
+  const dotStyle = { radius: 5, color: 'rgba(0,0,0,0.12)', weight: 1, fillColor: '#fff', fillOpacity: 1 };
+  if (_segEditState.startIdx >= 0) {
+    const p = trackPoints[_segEditState.startIdx];
+    const m = L.circleMarker([p[0], p[1]], dotStyle).addTo(_segEditState.miniMap);
+    m.bindTooltip('起', { permanent: true, direction: 'top', className: 'seg-dot-label' });
+    _segEditState.miniMarkers.push(m);
+  }
+  if (_segEditState.endIdx > _segEditState.startIdx) {
+    const p = trackPoints[_segEditState.endIdx];
+    const m = L.circleMarker([p[0], p[1]], dotStyle).addTo(_segEditState.miniMap);
+    m.bindTooltip('终', { permanent: true, direction: 'top', className: 'seg-dot-label' });
+    _segEditState.miniMarkers.push(m);
+  }
+}
+
+function _updateMiniMapHighlight(trackPoints) {
+  if (_segEditState.miniSegLayer) {
+    _segEditState.miniMap.removeLayer(_segEditState.miniSegLayer);
+    _segEditState.miniSegLayer = null;
+  }
+  if (_segEditState.startIdx >= 0 && _segEditState.endIdx > _segEditState.startIdx) {
+    const segPts = trackPoints.slice(_segEditState.startIdx, _segEditState.endIdx + 1).map(p => [p[0], p[1]]);
+    _segEditState.miniSegLayer = L.polyline(segPts, {
+      color: '#FF6B6B', weight: 4, opacity: 0.9,
+    }).addTo(_segEditState.miniMap);
+  }
+}
+
+function _updateSegModalHint() {
+  const el = document.getElementById('segModalHint');
+  const s = _segEditState;
+  if (s.phase === 'start') el.textContent = '点击「选起点」按钮，然后在小地图上点击选择绕圈起点';
+  else if (s.phase === 'end') el.textContent = '✅ 起点已选，点击「选终点」按钮后在小地图上点选绕圈终点';
+  else el.textContent = '✅ 绕圈段已选定，可调整圈数后点保存';
+}
+
+function _updateSegModalInfo(ride) {
+  const el = document.getElementById('segModalInfo');
+  const s = _segEditState;
+  if (s.startIdx >= 0 && s.endIdx > s.startIdx) {
+    const segPts = ride.track_points.slice(s.startIdx, s.endIdx + 1);
+    const segDist = trackPointsDist(segPts);
+    el.textContent = `绕圈段: ${segDist.toFixed(1)}km · ${s.endIdx - s.startIdx} 个轨迹点`;
+  } else if (s.startIdx >= 0) {
+    el.textContent = `起点: 第 ${s.startIdx} 点 (${ride.track_points[s.startIdx][0].toFixed(4)}, ${ride.track_points[s.startIdx][1].toFixed(4)})`;
+  } else {
+    el.textContent = '';
+  }
+}
+
+// 选起点/终点的按钮点击（激活小地图点击）
+window._segPickStart = function() {
+  if (!_segEditState) return;
+  _segEditState.phase = 'start';
+  _segEditState.startIdx = -1; // 重置
+  _updateSegModalHint();
+  _updateSegModalInfo(RIDES[_segEditState.idx]);
+};
+
+window._segPickEnd = function() {
+  if (!_segEditState || _segEditState.startIdx < 0) return;
+  _segEditState.phase = 'end';
+  _segEditState.endIdx = -1;
+  _updateSegModalHint();
+};
+
+window._segSave = function() {
+  if (!_segEditState || _segEditState.phase !== 'done') { showStatus('请先选择起点和终点', 'err'); return; }
+  const ride = RIDES[_segEditState.idx];
+  if (!ride) return;
+  const laps = parseInt(document.getElementById('segModalLaps').value) || 1;
+  const startIdx = _segEditState.startIdx;
+  const endIdx = _segEditState.endIdx;
+  ride.loop_segment = {
+    start_idx: startIdx, end_idx: endIdx,
+    laps: Math.max(1, laps),
+  };
+  ride.manual_laps = ride.loop_segment.laps;
+  const savedIdx = _segEditState.idx;
+  _destroySegmentModal();
+  saveAllRides();
+  window.showRide(savedIdx);
+  // 在主地图上高亮 segment
+  if (ride.track_points && startIdx >= 0 && endIdx > startIdx) {
+    highlightSegment(ride.track_points.slice(startIdx, endIdx + 1));
+  }
+  showStatus('✅ 绕圈段已保存', 'ok');
+};
+
+window._segCancel = function() {
+  _destroySegmentModal();
+  showStatus('已取消', 'info');
+};
+
+function _destroySegmentModal() {
+  if (_segEditState) {
+    if (_segEditState.miniMap) {
+      _segEditState.miniMap.off();
+      _segEditState.miniMap.remove();
+    }
+    _segEditState = null;
+  }
+  document.getElementById('segmentModal').style.display = 'none';
+}
 
 window.editRideName = function() {
   if (_currentViewIdx < 0 || _currentViewIdx >= RIDES.length) return;
@@ -607,12 +800,18 @@ const LOOP_DIST_KM = 1.0;         // 起终点距离 < 1km 视为"起终点近�
 const LAP_DETECT_KM = 0.5;        // countLaps 用 500m 阈值(更容忍 GPS 漂移)
 
 // 圈数: 数"经过起点 500m 范围"的次数
-function countLaps(trackPoints) {
+// loopSegment 可选: { start_idx, end_idx } → 只在该段内数,用 segment 起点为圆心
+function countLaps(trackPoints, loopSegment) {
   if (!trackPoints || trackPoints.length < 20) return 1;
-  const startLat = trackPoints[0][0], startLng = trackPoints[0][1];
+  let s, e;
+  if (loopSegment && loopSegment.start_idx != null && loopSegment.end_idx != null) {
+    s = loopSegment.start_idx; e = loopSegment.end_idx;
+  } else {
+    s = 0; e = trackPoints.length - 1;
+  }
+  const startLat = trackPoints[s][0], startLng = trackPoints[s][1];
   let passes = 0, inZone = true;
-
-  for (let i = 1; i < trackPoints.length; i++) {
+  for (let i = s + 1; i <= e; i++) {
     const d = haversineKm(trackPoints[i][0], trackPoints[i][1], startLat, startLng);
     if (d >= LAP_DETECT_KM) {
       inZone = false;
@@ -622,6 +821,48 @@ function countLaps(trackPoints) {
     }
   }
   return Math.max(1, passes);
+}
+
+// 在指定 segment 范围内数圈: 以 segment 起点为圆心, 500m 阈值进出
+function countLapsInSegment(trackPoints, startIdx, endIdx) {
+  if (!trackPoints || endIdx - startIdx < 20) return 1;
+  const startLat = trackPoints[startIdx][0], startLng = trackPoints[startIdx][1];
+  let passes = 0, inZone = true;
+  for (let i = startIdx + 1; i <= endIdx; i++) {
+    const d = haversineKm(trackPoints[i][0], trackPoints[i][1], startLat, startLng);
+    if (d >= LAP_DETECT_KM) {
+      inZone = false;
+    } else if (!inZone) {
+      passes++;
+      inZone = true;
+    }
+  }
+  return Math.max(1, passes);
+}
+
+// 自动检测绕圈段: 用点密度找到最常经过的区域作为绕圈中心,
+// 第一次进入 ~ 最后一次离开即为绕圈段
+function detectLoopSegment(trackPoints, laps) {
+  if (!trackPoints || trackPoints.length < 50) return null;
+  const step = Math.max(1, Math.floor(trackPoints.length / 80));
+  let bestIdx = 0, bestCount = 0;
+  for (let i = step; i < trackPoints.length - step; i += step) {
+    let count = 0;
+    for (let j = 0; j < trackPoints.length; j++) {
+      const d = haversineKm(trackPoints[i][0], trackPoints[i][1], trackPoints[j][0], trackPoints[j][1]);
+      if (d < 0.3) count++;
+    }
+    if (count > bestCount) { bestCount = count; bestIdx = i; }
+  }
+  const cxLat = trackPoints[bestIdx][0], cxLng = trackPoints[bestIdx][1];
+  let startIdx = -1, endIdx = -1;
+  for (let i = 0; i < trackPoints.length; i++) {
+    const d = haversineKm(trackPoints[i][0], trackPoints[i][1], cxLat, cxLng);
+    if (d < 0.4) { if (startIdx === -1) startIdx = i; endIdx = i; }
+  }
+  if (startIdx < 0 || endIdx <= startIdx || endIdx - startIdx < 20) return null;
+  const segLaps = countLapsInSegment(trackPoints, startIdx, endIdx);
+  return { start_idx: startIdx, end_idx: endIdx, laps: Math.max(1, segLaps) };
 }
 
 // 多圈时取第一圈的 track points（从起点到第一次"明显回到起点区域"），
@@ -1105,7 +1346,11 @@ async function handleParsedRide(parsed, file) {
     parsed.route = match.reversed ? reverseRouteName(match.route) : match.route;
     // 匹配已有路线时也检查圈数
     const laps = parsed.track_points ? countLaps(parsed.track_points) : 1;
-    if (laps > 1) parsed.manual_laps = laps;
+    if (laps > 1) {
+      parsed.manual_laps = laps;
+      const seg = detectLoopSegment(parsed.track_points, laps);
+      if (seg) parsed.loop_segment = seg;
+    }
     const lapHint = laps > 1 ? ` · ${laps} 圈` : '';
     showStatus(`✅ ${file.name || parsed.filename} 已匹配路线「${parsed.route}」${match.reversed ? '(方向相反)' : ''}${lapHint}`, 'ok');
     await new Promise(r => setTimeout(r, 800));
@@ -1140,6 +1385,11 @@ async function handleParsedRide(parsed, file) {
         lapCount = countLaps(parsed.track_points);
       }
       const useLaps = parsed.manual_laps || lapCount;
+      // 尝试自动检测绕圈段
+      if (useLaps > 1) {
+        const seg = detectLoopSegment(parsed.track_points, useLaps);
+        if (seg) parsed.loop_segment = seg;
+      }
       const avgLapMin = parsed.moving_time_min && useLaps ? (parsed.moving_time_min / useLaps) : 0;
       const lpTimeStr = avgLapMin >= 1 ? `${Math.floor(avgLapMin)}′${Math.round(avgLapMin % 1 * 60)}″` : `${Math.round(avgLapMin * 60)}″`;
       document.getElementById('routeLoopLaps').value = useLaps;
@@ -1169,7 +1419,10 @@ function finishUploadWithName(name) {
   const lapsEl = document.getElementById('routeLoopLaps');
   if (lapsEl) {
     const laps = parseInt(lapsEl.value);
-    if (laps && laps > 0) parsed.manual_laps = laps;
+    if (laps && laps > 0) {
+      parsed.manual_laps = laps;
+      if (parsed.loop_segment) parsed.loop_segment.laps = laps;
+    }
   }
   finalizeUpload(parsed, file);
   pendingUploadData = null;
@@ -1277,6 +1530,7 @@ function buildRideObject(parsed, filename) {
     has_cadence: !!parsed.has_cadence, avg_cadence: parsed.avg_cadence || 0, max_cadence: parsed.max_cadence || 0,
     track_points: parsed.track_points || [],
     start_lat: parsed.start_lat || null, start_lng: parsed.start_lng || null, end_lat: parsed.end_lat || null, end_lng: parsed.end_lng || null,
+    loop_segment: parsed.loop_segment || null,
   };
 }
 

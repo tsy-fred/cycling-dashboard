@@ -10,8 +10,10 @@ dist/
 data/rides.json
 data/locations.json
 screenshot.png
-CLAUDE.md
-.claude/
 scripts/merge_fit.py
 TODO.md
+
+# Swift
+.build/
+.swiftpm/
 

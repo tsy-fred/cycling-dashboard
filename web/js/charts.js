@@ -7,6 +7,7 @@ let detailCharts = [];
 let monthlyChart = null;
 let crossSampleN = 1;
 let crossX = null;
+let _lapBoundaryIndices = []; // 每圈分隔在采样后的 index
 
 // 注册跨图表十字线插件
 Chart.register({id:'crosshair',afterDraw:(chart)=>{
@@ -21,6 +22,32 @@ Chart.register({id:'crosshair',afterDraw:(chart)=>{
   ctx.strokeStyle = 'rgba(0,0,0,0.15)';
   ctx.lineWidth = 1;
   ctx.stroke();
+  ctx.restore();
+}});
+
+// 圈分隔线插件
+Chart.register({id:'lapLines',afterDraw:(chart)=>{
+  if (!_lapBoundaryIndices.length || detailCharts.indexOf(chart) === -1) return;
+  const ca = chart.chartArea, ctx = chart.ctx, meta = chart.getDatasetMeta(0);
+  if (!ca || !ctx || !meta || !meta.data) return;
+  ctx.save();
+  ctx.setLineDash([3, 4]);
+  ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+  ctx.lineWidth = 1;
+  ctx.font = '10px -apple-system, "PingFang SC", sans-serif';
+  ctx.textAlign = 'center';
+  _lapBoundaryIndices.forEach((si, li) => {
+    const pt = meta.data[si];
+    if (!pt) return;
+    const x = pt.x;
+    ctx.beginPath();
+    ctx.moveTo(x, ca.top);
+    ctx.lineTo(x, ca.bottom);
+    ctx.stroke();
+    // 标签: L1, L2...
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillText(`L${li + 1}`, x, ca.top + 10);
+  });
   ctx.restore();
 }});
 
@@ -132,6 +159,23 @@ export function renderDetail(ride, onHover, onLeave) {
     altData.push(pts[i][4] || null);
     cadData.push(hasCad6 ? (pts[i][5] || null) : null);
     indices.push(i);
+  }
+
+  // 计算圈分隔线在采样后数组中的位置
+  _lapBoundaryIndices = [];
+  if (ride.loop_segment && ride.loop_segment.laps > 1) {
+    const seg = ride.loop_segment;
+    const lapLen = (seg.end_idx - seg.start_idx) / seg.laps;
+    for (let k = 1; k < seg.laps; k++) {
+      const targetOrigIdx = seg.start_idx + Math.round(k * lapLen);
+      // 找最近的采样 index
+      let bestSi = -1, bestD = Infinity;
+      for (let si = 0; si < indices.length; si++) {
+        const d = Math.abs(indices[si] - targetOrigIdx);
+        if (d < bestD) { bestD = d; bestSi = si; }
+      }
+      if (bestSi >= 0) _lapBoundaryIndices.push(bestSi);
+    }
   }
 
   // 鼠标移动/离开事件

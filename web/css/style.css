@@ -221,3 +221,7 @@ tbody tr.act{background:#edf0f7}
 .exp-footer{display:flex;justify-content:flex-end;gap:8px;padding:14px 24px;border-top:1px solid #f0f0f2;background:#fafbfc}
 .exp-footer .btn{padding:9px 22px}
 @media(max-width:680px){.exp-body{grid-template-columns:1fr}.exp-controls{border-right:none;border-bottom:1px solid #f0f0f2;max-height:none}}
+
+/* ── 绕圈段白点标签 ── */
+.seg-dot-label{background:rgba(0,0,0,0.65)!important;color:#fff!important;font-size:10px!important;padding:1px 5px!important;border:none!important;border-radius:3px!important;font-weight:500!important}
+.seg-dot-label::before{border-top-color:rgba(0,0,0,0.65)!important}

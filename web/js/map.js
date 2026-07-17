@@ -429,6 +429,51 @@ export function renderSpeedHeatmap(trackPoints, maxSpeed, rideIndex) {
   speedLayer.addTo(map);
 }
 
+// ═════════════════════════════════════════════════════════════════════
+//  绕圈段高亮（在主地图上显示已保存的 segment）
+// ═════════════════════════════════════════════════════════════════════
+
+let _segmentHighlightLayer = null;
+let _segMarkers = [];
+
+/**
+ * 高亮绕圈段轨迹（白色起终点圆点 + 红色轨迹线）
+ */
+export function highlightSegment(segmentTrackPoints) {
+  clearSegmentHighlight();
+  if (!map || !segmentTrackPoints || segmentTrackPoints.length < 2) return;
+  const pts = segmentTrackPoints.map(p => [p[0], p[1]]);
+  _segmentHighlightLayer = L.polyline(pts, {
+    color: '#FF6B6B', weight: 5, opacity: 1,
+  }).addTo(map);
+  const start = segmentTrackPoints[0];
+  const end = segmentTrackPoints[segmentTrackPoints.length - 1];
+  const dotStyle = { radius: 5, color: 'rgba(0,0,0,0.12)', weight: 1, fillColor: '#fff', fillOpacity: 1 };
+  if (start) {
+    const m = L.circleMarker([start[0], start[1]], dotStyle).addTo(map);
+    m.bindTooltip('起', { permanent: false, direction: 'top', className: 'seg-dot-label' });
+    _segMarkers.push(m);
+  }
+  if (end && (end[0] !== start[0] || end[1] !== start[1])) {
+    const m = L.circleMarker([end[0], end[1]], dotStyle).addTo(map);
+    m.bindTooltip('终', { permanent: false, direction: 'top', className: 'seg-dot-label' });
+    _segMarkers.push(m);
+  }
+}
+
+/**
+ * 清除绕圈段高亮
+ */
+export function clearSegmentHighlight() {
+  if (_segmentHighlightLayer) { map.removeLayer(_segmentHighlightLayer); _segmentHighlightLayer = null; }
+  _segMarkers.forEach(m => map.removeLayer(m));
+  _segMarkers = [];
+}
+
+// ═════════════════════════════════════════════════════════════════════
+//  速度热力图层
+// ═════════════════════════════════════════════════════════════════════
+
 /**
  * 清除速度热力图层，恢复默认折线
  */
