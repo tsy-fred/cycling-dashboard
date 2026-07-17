@@ -27,10 +27,6 @@ extension Color {
         let b = Double(rgb & 0xFF) / 255
         self.init(red: r, green: g, blue: b)
     }
-
-    func toHex() -> String {
-        return "#000000"
-    }
 }
 
 func isLightColor(hex: String) -> Bool {
