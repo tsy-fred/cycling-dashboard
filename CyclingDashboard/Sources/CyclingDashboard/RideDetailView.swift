@@ -1,9 +1,13 @@
 import SwiftUI
 
 struct RideDetailView: View {
-    var ride: Ride
+    @Environment(DataStore.self) var store
+    @State var ride: Ride
     @Environment(\.dismiss) var dismiss
     @State private var showShare = false
+    @State private var showDeleteConfirm = false
+    @State private var showRename = false
+    @State private var newRouteName = ""
 
     var body: some View {
         ScrollView {
@@ -23,14 +27,46 @@ struct RideDetailView: View {
         .navigationTitle(ride.route.isEmpty ? "骑行详情" : ride.route)
         .toolbar {
             ToolbarItem {
+                Button("改名") {
+                    newRouteName = ride.route
+                    showRename = true
+                }
+                .foregroundStyle(AppTheme.text)
+            }
+            ToolbarItem {
                 Button("分享") {
                     showShare = true
                 }
                 .foregroundStyle(AppTheme.primary)
             }
+            ToolbarItem {
+                Button("删除", role: .destructive) {
+                    showDeleteConfirm = true
+                }
+                .foregroundStyle(AppTheme.danger)
+            }
         }
         .sheet(isPresented: $showShare) {
             ShareImageView(ride: ride)
+        }
+        .alert("重命名路线", isPresented: $showRename) {
+            TextField("路线名称", text: $newRouteName)
+            Button("取消", role: .cancel) {}
+            Button("保存") {
+                let name = newRouteName.trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty else { return }
+                store.updateRideRoute(id: ride.id, route: name)
+                ride.route = name
+            }
+        }
+        .alert("删除这条骑行？", isPresented: $showDeleteConfirm) {
+            Button("取消", role: .cancel) {}
+            Button("删除", role: .destructive) {
+                store.deleteRide(id: ride.id)
+                dismiss()
+            }
+        } message: {
+            Text("\(ride.date) · \(ride.route.isEmpty ? "未命名" : ride.route)，将从 rides.json 移除")
         }
     }
 

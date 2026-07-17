@@ -127,6 +127,18 @@ class DataStore {
         saveRides()
     }
 
+    func updateRideRoute(id: String, route: String) {
+        guard let idx = rides.firstIndex(where: { $0.id == id }) else { return }
+        rides[idx].route = route
+        if !routeOrder.contains(route) {
+            routeOrder.append(route)
+        }
+        if routeColors[route] == nil {
+            routeColors[route] = defaultColor(for: route)
+        }
+        saveRides()
+    }
+
     func addLocation(name: String, lat: Double, lng: Double) {
         let id = "loc_\(Date().timeIntervalSince1970)_\(Int.random(in: 1000..<9999))"
         locations.append(Location(id: id, name: name, lat: lat, lng: lng, manual: true))
