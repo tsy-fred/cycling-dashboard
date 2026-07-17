@@ -92,6 +92,12 @@ struct ImportView: View {
 
     func confirmImport() {
         guard var p = parsed else { return }
+        if store.rides.contains(where: { $0.filename == p.filename && $0.date == p.date }) {
+            errorMsg = "这条骑行已存在，未重复导入。"
+            parsed = nil
+            selectedFile = nil
+            return
+        }
         p.route = routeName
         store.importFitResult(p)
         dismiss()
