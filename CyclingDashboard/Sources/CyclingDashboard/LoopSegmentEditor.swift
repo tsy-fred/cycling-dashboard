@@ -3,6 +3,7 @@ import MapKit
 
 struct LoopSegmentEditor: View {
     var ride: Ride
+    let coords: [CLLocationCoordinate2D]
     var onSave: (LoopSegment) -> Void
     @Environment(\.dismiss) var dismiss
 
@@ -18,6 +19,7 @@ struct LoopSegmentEditor: View {
 
     init(ride: Ride, onSave: @escaping (LoopSegment) -> Void) {
         self.ride = ride
+        self.coords = ride.trackPoints.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) }
         self.onSave = onSave
         _camera = State(initialValue: cameraPosition(for: ride))
         if let seg = ride.loopSegment {
@@ -31,10 +33,6 @@ struct LoopSegmentEditor: View {
             _laps = State(initialValue: 1)
             _phase = State(initialValue: .start)
         }
-    }
-
-    var coords: [CLLocationCoordinate2D] {
-        ride.trackPoints.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) }
     }
 
     var segmentCoords: [CLLocationCoordinate2D] {

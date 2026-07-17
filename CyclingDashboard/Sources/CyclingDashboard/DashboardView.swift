@@ -20,7 +20,7 @@ struct DashboardView: View {
             VStack(spacing: 20) {
                 mapSection
                 StatsSection(rides: selectedRides, route: selectedRoute)
-                RouteCardsSection(selectedRoute: $selectedRoute, camera: $camera)
+                RouteCardsSection(selectedRoute: $selectedRoute)
                 RecentRidesSection(rides: selectedRides, route: selectedRoute, showAllRides: $showAllRides)
             }
             .padding(20)

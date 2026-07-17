@@ -1,10 +1,8 @@
 import SwiftUI
-import MapKit
 
 struct RouteCardsSection: View {
     @Environment(DataStore.self) var store
     @Binding var selectedRoute: String?
-    @Binding var camera: MapCameraPosition
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -14,9 +12,9 @@ struct RouteCardsSection: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    AllRoutesCard(selectedRoute: $selectedRoute, camera: $camera, store: store)
+                    AllRoutesCard(selectedRoute: $selectedRoute, store: store)
                     ForEach(store.routes, id: \.self) { route in
-                        RouteCard(route: route, selectedRoute: $selectedRoute, camera: $camera, store: store)
+                        RouteCard(route: route, selectedRoute: $selectedRoute, store: store)
                     }
                 }
                 .padding(2)
@@ -27,7 +25,6 @@ struct RouteCardsSection: View {
 
 struct AllRoutesCard: View {
     @Binding var selectedRoute: String?
-    @Binding var camera: MapCameraPosition
     var store: DataStore
 
     var isSelected: Bool { selectedRoute == nil }
@@ -66,7 +63,6 @@ struct AllRoutesCard: View {
 struct RouteCard: View {
     var route: String
     @Binding var selectedRoute: String?
-    @Binding var camera: MapCameraPosition
     var store: DataStore
 
     var isSelected: Bool { selectedRoute == route }

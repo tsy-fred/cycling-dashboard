@@ -53,6 +53,7 @@ struct ImportView: View {
                 Spacer()
                 if parsed != nil {
                     Button("导入") { confirmImport() }
+                        .keyboardShortcut(.defaultAction)
                         .buttonStyle(.borderedProminent)
                         .tint(AppTheme.primary)
                 }
@@ -75,7 +76,10 @@ struct ImportView: View {
 
         Task {
             let parser = FitParser(projectRoot: store.projectRoot)
-            if let result = await parser.parse(fitPath: url) {
+            if var result = await parser.parse(fitPath: url) {
+                if result.loopSegment == nil {
+                    result.loopSegment = detectLoopSegment(result.trackPoints)
+                }
                 await MainActor.run {
                     parsed = result
                     routeName = result.route.isEmpty ? "骑行 \(result.date)" : result.route
@@ -99,9 +103,6 @@ struct ImportView: View {
             return
         }
         p.route = routeName
-        if p.loopSegment == nil, let seg = detectLoopSegment(p.trackPoints) {
-            p.loopSegment = seg
-        }
         store.importFitResult(p)
         dismiss()
     }

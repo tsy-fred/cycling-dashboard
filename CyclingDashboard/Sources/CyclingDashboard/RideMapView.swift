@@ -3,10 +3,12 @@ import MapKit
 
 struct RideMapView: View {
     var ride: Ride
+    let coords: [CLLocationCoordinate2D]
     @State private var camera: MapCameraPosition = .region(MKCoordinateRegion())
 
-    var coords: [CLLocationCoordinate2D] {
-        ride.trackPoints.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) }
+    init(ride: Ride) {
+        self.ride = ride
+        self.coords = ride.trackPoints.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) }
     }
 
     var segmentCoords: [CLLocationCoordinate2D] {
