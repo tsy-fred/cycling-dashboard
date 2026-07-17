@@ -7,6 +7,7 @@ struct RideDetailView: View {
     @State private var showShare = false
     @State private var showDeleteConfirm = false
     @State private var showRename = false
+    @State private var showSegmentEditor = false
     @State private var newRouteName = ""
 
     var body: some View {
@@ -26,6 +27,12 @@ struct RideDetailView: View {
         .background(AppTheme.background.ignoresSafeArea())
         .navigationTitle(ride.route.isEmpty ? "骑行详情" : ride.route)
         .toolbar {
+            ToolbarItem {
+                Button("绕圈") {
+                    showSegmentEditor = true
+                }
+                .foregroundStyle(AppTheme.text)
+            }
             ToolbarItem {
                 Button("改名") {
                     newRouteName = ride.route
@@ -48,6 +55,13 @@ struct RideDetailView: View {
         }
         .sheet(isPresented: $showShare) {
             ShareImageView(ride: ride)
+        }
+        .sheet(isPresented: $showSegmentEditor) {
+            LoopSegmentEditor(ride: ride) { seg in
+                store.updateLoopSegment(id: ride.id, segment: seg)
+                ride.loopSegment = seg
+                ride.manualLaps = seg.laps
+            }
         }
         .alert("重命名路线", isPresented: $showRename) {
             TextField("路线名称", text: $newRouteName)

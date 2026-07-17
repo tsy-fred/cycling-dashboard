@@ -17,6 +17,50 @@ func haversineKm(lat1: Double, lng1: Double, lat2: Double, lng2: Double) -> Doub
                 CLLocationCoordinate2D(latitude: lat2, longitude: lng2))
 }
 
+// 在 segment 范围内数圈: 以 segment 起点为圆心, 500m 阈值进出
+func countLapsInSegment(_ pts: [TrackPoint], startIdx: Int, endIdx: Int) -> Int {
+    guard endIdx - startIdx >= 20 else { return 1 }
+    let s = pts[startIdx]
+    var passes = 0, inZone = true
+    for i in (startIdx + 1)...endIdx {
+        let d = haversineKm(lat1: pts[i].lat, lng1: pts[i].lng, lat2: s.lat, lng2: s.lng)
+        if d >= 0.5 {
+            inZone = false
+        } else if !inZone {
+            passes += 1
+            inZone = true
+        }
+    }
+    return max(1, passes)
+}
+
+// 自动检测绕圈段: 点密度最高的区域作为绕圈中心, 第一次进入 ~ 最后一次离开
+func detectLoopSegment(_ pts: [TrackPoint]) -> LoopSegment? {
+    guard pts.count >= 50 else { return nil }
+    let step = max(1, pts.count / 80)
+    var bestIdx = 0, bestCount = 0
+    var i = step
+    while i < pts.count - step {
+        var count = 0
+        for j in 0..<pts.count {
+            if haversineKm(lat1: pts[i].lat, lng1: pts[i].lng, lat2: pts[j].lat, lng2: pts[j].lng) < 0.3 { count += 1 }
+        }
+        if count > bestCount { bestCount = count; bestIdx = i }
+        i += step
+    }
+    let c = pts[bestIdx]
+    var startIdx = -1, endIdx = -1
+    for k in 0..<pts.count {
+        if haversineKm(lat1: pts[k].lat, lng1: pts[k].lng, lat2: c.lat, lng2: c.lng) < 0.4 {
+            if startIdx == -1 { startIdx = k }
+            endIdx = k
+        }
+    }
+    guard startIdx >= 0, endIdx > startIdx, endIdx - startIdx >= 20 else { return nil }
+    let laps = countLapsInSegment(pts, startIdx: startIdx, endIdx: endIdx)
+    return LoopSegment(startIdx: startIdx, endIdx: endIdx, laps: max(1, laps))
+}
+
 extension Color {
     init(hex: String) {
         let h = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))

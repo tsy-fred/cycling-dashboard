@@ -13,6 +13,21 @@ struct ChartsView: View {
         cumulativeDistances(sampled)
     }
 
+    // 圈分隔线对应的距离(km): loop_segment 按圈数均分, 映射到采样点后取距离
+    var lapBoundaryDists: [Double] {
+        guard let seg = ride.loopSegment, seg.laps > 1,
+              !ride.trackPoints.isEmpty, !sampled.isEmpty else { return [] }
+        let step = max(1, ride.trackPoints.count / 120)
+        let lapLen = Double(seg.endIdx - seg.startIdx) / Double(seg.laps)
+        var out: [Double] = []
+        for k in 1..<seg.laps {
+            let origIdx = seg.startIdx + Int((Double(k) * lapLen).rounded())
+            let si = min(max(0, origIdx / step), sampled.count - 1)
+            out.append(dists[si])
+        }
+        return out
+    }
+
     var data: [ChartPoint] {
         sampled.enumerated().map { i, pt in
             ChartPoint(
@@ -57,6 +72,11 @@ struct ChartsView: View {
                 )
                 .foregroundStyle(color)
                 .interpolationMethod(.catmullRom)
+                ForEach(lapBoundaryDists, id: \.self) { d in
+                    RuleMark(x: .value("圈", d))
+                        .foregroundStyle(AppTheme.textMuted.opacity(0.5))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                }
             }
             .chartXAxis {
                 AxisMarks(position: .bottom, values: .automatic) { _ in

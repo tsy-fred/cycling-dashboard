@@ -139,6 +139,15 @@ class DataStore {
         saveRides()
     }
 
+    func updateLoopSegment(id: String, segment: LoopSegment?) {
+        guard let idx = rides.firstIndex(where: { $0.id == id }) else { return }
+        rides[idx].loopSegment = segment
+        if let segment {
+            rides[idx].manualLaps = segment.laps
+        }
+        saveRides()
+    }
+
     func addLocation(name: String, lat: Double, lng: Double) {
         let id = "loc_\(Date().timeIntervalSince1970)_\(Int.random(in: 1000..<9999))"
         locations.append(Location(id: id, name: name, lat: lat, lng: lng, manual: true))
