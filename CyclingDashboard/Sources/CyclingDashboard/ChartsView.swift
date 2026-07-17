@@ -33,11 +33,11 @@ struct ChartsView: View {
                 .foregroundStyle(AppTheme.text)
 
             VStack(spacing: 16) {
-                miniChart(title: "心率", color: .pink, values: data.map { $0.hr })
-                miniChart(title: "速度", color: AppTheme.accentBlue, values: data.map { $0.speed })
-                miniChart(title: "海拔", color: AppTheme.success, values: data.map { $0.alt })
+                miniChart(title: "心率", color: .pink)
+                miniChart(title: "速度", color: AppTheme.accentBlue)
+                miniChart(title: "海拔", color: AppTheme.success)
                 if ride.hasCadence {
-                    miniChart(title: "踏频", color: AppTheme.secondary, values: data.map { $0.cadence })
+                    miniChart(title: "踏频", color: AppTheme.secondary)
                 }
             }
         }
@@ -45,7 +45,7 @@ struct ChartsView: View {
         .cardStyle()
     }
 
-    func miniChart(title: String, color: Color, values: [Double]) -> some View {
+    func miniChart(title: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption)
