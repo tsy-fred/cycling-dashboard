@@ -1,18 +1,20 @@
 import SwiftUI
 
 enum AppTheme {
-    static let background = Color(hex: "#14161A")
-    static let surface = Color(hex: "#1E2127")
-    static let surfaceHover = Color(hex: "#25292F")
-    static let primary = Color(hex: "#FF6B35")
-    static let secondary = Color(hex: "#00D9C0")
-    static let accentYellow = Color(hex: "#FFB800")
-    static let accentBlue = Color(hex: "#3B8DFF")
-    static let text = Color(hex: "#FFFFFF")
-    static let textMuted = Color(hex: "#8B909A")
-    static let border = Color(hex: "#2E333B")
-    static let success = Color(hex: "#22C55E")
-    static let danger = Color(hex: "#EF4444")
+    static var isDark: Bool { UserDefaults.standard.object(forKey: "darkMode").flatMap { $0 as? Bool } ?? true }
+
+    static var background: Color { isDark ? Color(hex: "#14161A") : Color(hex: "#F2F2F7") }
+    static var surface: Color { isDark ? Color(hex: "#1E2127") : Color(hex: "#FFFFFF") }
+    static var surfaceHover: Color { isDark ? Color(hex: "#25292F") : Color(hex: "#F5F5F7") }
+    static var primary: Color { Color(hex: "#FF6B35") }
+    static var secondary: Color { Color(hex: "#00D9C0") }
+    static var accentYellow: Color { Color(hex: "#FFB800") }
+    static var accentBlue: Color { Color(hex: "#3B8DFF") }
+    static var text: Color { isDark ? Color(hex: "#FFFFFF") : Color(hex: "#1C1C1E") }
+    static var textMuted: Color { isDark ? Color(hex: "#8B909A") : Color(hex: "#8E8E93") }
+    static var border: Color { isDark ? Color(hex: "#2E333B") : Color(hex: "#D1D1D6") }
+    static var success: Color { Color(hex: "#22C55E") }
+    static var danger: Color { Color(hex: "#EF4444") }
 }
 
 extension View {

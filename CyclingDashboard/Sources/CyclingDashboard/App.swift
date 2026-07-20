@@ -6,9 +6,9 @@ struct CyclingDashboardApp: App {
     @State private var store = DataStore()
 
     init() {
-        // 裸二进制从终端/调试器启动时不会自动成为前台 app, 手动激活
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
+        UserDefaults.standard.register(defaults: ["darkMode": NSApp.effectiveAppearance.name == .darkAqua])
     }
 
     var body: some Scene {
@@ -29,6 +29,13 @@ struct CyclingDashboardApp: App {
                     store.load()
                 }
                 .keyboardShortcut("R", modifiers: .command)
+
+                Divider()
+
+                Button("清空数据", role: .destructive) {
+                    store.clearAll()
+                }
+                .keyboardShortcut("D", modifiers: [.command, .shift])
             }
             CommandMenu("项目") {
                 Button("选择项目文件夹") {

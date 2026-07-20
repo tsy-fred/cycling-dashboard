@@ -8,7 +8,7 @@ struct RideMapView: View {
 
     init(ride: Ride) {
         self.ride = ride
-        self.coords = ride.trackPoints.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) }
+        self.coords = ride.trackPoints.map { wgs84ToGcj02(CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng)) }
     }
 
     var segmentCoords: [CLLocationCoordinate2D] {
@@ -36,7 +36,7 @@ struct RideMapView: View {
                 }
             }
         }
-        .mapStyle(.standard(elevation: .realistic))
+        .mapStyle(.standard(elevation: .flat))
         .mapControls {
             MapPitchToggle()
             MapCompass()

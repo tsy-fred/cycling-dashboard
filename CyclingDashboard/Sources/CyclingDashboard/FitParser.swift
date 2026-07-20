@@ -18,8 +18,8 @@ struct FitParser {
     func parseSync(fitPath: URL) -> ParsedRide? {
         let script = projectRoot.appendingPathComponent("scripts/parse_fit.py")
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        task.arguments = ["python3", script.path, fitPath.path, "--pretty"]
+        task.executableURL = URL(fileURLWithPath: "/usr/local/bin/python3")
+        task.arguments = [script.path, fitPath.path, "--pretty"]
         task.currentDirectoryURL = projectRoot
 
         let outPipe = Pipe()

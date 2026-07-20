@@ -7,7 +7,8 @@
             "name": "Debug CyclingDashboard",
             "target": "CyclingDashboard",
             "configuration": "debug",
-            "preLaunchTask": "swift: Build Debug CyclingDashboard"
+            "preLaunchTask": "swift: Build Debug CyclingDashboard",
+            "cwd": "${workspaceFolder:CyclingDashboard}"
         },
         {
             "type": "swift",
@@ -15,7 +16,8 @@
             "name": "Release CyclingDashboard",
             "target": "CyclingDashboard",
             "configuration": "release",
-            "preLaunchTask": "swift: Build Release CyclingDashboard"
+            "preLaunchTask": "swift: Build Release CyclingDashboard",
+            "cwd": "${workspaceFolder:CyclingDashboard}"
         }
     ]
 }

@@ -3,6 +3,7 @@ import MapKit
 
 struct DashboardView: View {
     @Environment(DataStore.self) var store
+    @AppStorage("darkMode") private var isDarkMode = true
     @State private var selectedRoute: String? = nil
     @State private var camera: MapCameraPosition = .region(MKCoordinateRegion())
     @State private var showImport = false
@@ -24,8 +25,10 @@ struct DashboardView: View {
                 RecentRidesSection(rides: selectedRides, route: selectedRoute, showAllRides: $showAllRides)
             }
             .padding(20)
+            .id(isDarkMode)
         }
         .background(AppTheme.background.ignoresSafeArea())
+        .preferredColorScheme(isDarkMode ? .dark : .light)
         .navigationTitle("Cycling Dashboard")
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -36,16 +39,25 @@ struct DashboardView: View {
                     Label("导入", systemImage: "plus.circle.fill")
                 }
             }
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: { isDarkMode.toggle() }) {
+                    Label("外观", systemImage: isDarkMode ? "moon.fill" : "sun.max.fill")
+                }
+            }
         }
         .onAppear {
-            NSApp?.appearance = NSAppearance(named: .darkAqua)
+            applyAppearance()
             store.load()
             camera = cameraPosition(for: selectedRoute, store: store)
         }
+        .onChange(of: isDarkMode) { _, _ in applyAppearance() }
         .onChange(of: selectedRoute) { _, new in
             withAnimation(.easeInOut(duration: 0.4)) {
                 camera = cameraPosition(for: new, store: store)
             }
+        }
+        .onChange(of: store.rides.count) { _, _ in
+            camera = cameraPosition(for: selectedRoute, store: store)
         }
         .onReceive(NotificationCenter.default.publisher(for: .importFit)) { _ in
             showImport = true
@@ -59,6 +71,10 @@ struct DashboardView: View {
         .sheet(isPresented: $showAllRides) {
             RidesListSheet(rides: selectedRides, route: selectedRoute)
         }
+    }
+
+    func applyAppearance() {
+        NSApp?.appearance = NSAppearance(named: isDarkMode ? .darkAqua : .aqua)
     }
 
     func selectProjectRoot() {

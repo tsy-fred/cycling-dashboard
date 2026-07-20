@@ -15,13 +15,21 @@ class DataStore {
         if let saved = UserDefaults.standard.url(forKey: "projectRoot"), FileManager.default.fileExists(atPath: saved.appendingPathComponent("data").path) {
             return saved
         }
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let known = home.appendingPathComponent("Desktop/projects/cycling-dashboard")
+        if FileManager.default.fileExists(atPath: known.appendingPathComponent("data").path) {
+            return known
+        }
         let current = FileManager.default.currentDirectoryPath
         let currentURL = URL(fileURLWithPath: current)
-        let dataURL = currentURL.appendingPathComponent("data")
-        if FileManager.default.fileExists(atPath: dataURL.path) {
-            return currentURL
+        let candidates = [currentURL, currentURL.deletingLastPathComponent()]
+        for url in candidates {
+            let dataPath = url.appendingPathComponent("data").path
+            if FileManager.default.fileExists(atPath: dataPath) {
+                return url
+            }
         }
-        let docs = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents/CyclingDashboard")
+        let docs = home.appendingPathComponent("Documents/CyclingDashboard")
         try? FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
         return docs
     }
@@ -253,6 +261,72 @@ class DataStore {
         }
     }
 
+    func matchRouteByGPS(startLat: Double?, startLng: Double?, endLat: Double?, endLng: Double?, trackPoints: [TrackPoint], distanceKm: Double) -> (route: String, reversed: Bool)? {
+        guard let startLat, let startLng, let endLat, let endLng else { return nil }
+        let isLoop = haversineKm(lat1: startLat, lng1: startLng, lat2: endLat, lng2: endLng) < 1.0
+        let GPS_MATCH_KM = 0.5
+        var best: (String, Bool)? = nil
+        var bestDist = Double.infinity
+
+        for ride in rides {
+            guard let rsLat = ride.startLat, let rsLng = ride.startLng, let reLat = ride.endLat, let reLng = ride.endLng else { continue }
+            if isLoop {
+                let rIsLoop = haversineKm(lat1: rsLat, lng1: rsLng, lat2: reLat, lng2: reLng) < 1.0
+                guard rIsLoop else { continue }
+                let sd = haversineKm(lat1: startLat, lng1: startLng, lat2: rsLat, lng2: rsLng)
+                guard sd < GPS_MATCH_KM else { continue }
+                let newPts = [0.25, 0.5, 0.75].compactMap { f -> TrackPoint? in
+                    let idx = Int(Double(trackPoints.count) * f)
+                    guard idx < trackPoints.count else { return nil }
+                    return trackPoints[idx]
+                }
+                let rPts = [0.25, 0.5, 0.75].compactMap { f -> CLLocationCoordinate2D? in
+                    let idx = Int(Double(ride.trackPoints.count) * f)
+                    guard idx < ride.trackPoints.count else { return nil }
+                    return CLLocationCoordinate2D(latitude: ride.trackPoints[idx].lat, longitude: ride.trackPoints[idx].lng)
+                }
+                guard newPts.count == 3, rPts.count == 3 else { continue }
+                let d1 = haversineKm(CLLocationCoordinate2D(latitude: newPts[0].lat, longitude: newPts[0].lng), rPts[0])
+                let d2 = haversineKm(CLLocationCoordinate2D(latitude: newPts[1].lat, longitude: newPts[1].lng), rPts[1])
+                let d3 = haversineKm(CLLocationCoordinate2D(latitude: newPts[2].lat, longitude: newPts[2].lng), rPts[2])
+                let avgD = (d1 + d2 + d3) / 3
+                let distDiff = abs(distanceKm - ride.distanceKm)
+                if avgD < 1 && distDiff < 2 && avgD * 2 + distDiff < bestDist {
+                    bestDist = avgD * 2 + distDiff
+                    best = (ride.route, false)
+                }
+            } else {
+                let sd = haversineKm(lat1: startLat, lng1: startLng, lat2: rsLat, lng2: rsLng)
+                let ed = haversineKm(lat1: endLat, lng1: endLng, lat2: reLat, lng2: reLng)
+                if sd + ed < bestDist && sd < GPS_MATCH_KM && ed < GPS_MATCH_KM {
+                    bestDist = sd + ed; best = (ride.route, false)
+                }
+                let sdr = haversineKm(lat1: startLat, lng1: startLng, lat2: reLat, lng2: reLng)
+                let edr = haversineKm(lat1: endLat, lng1: endLng, lat2: rsLat, lng2: rsLng)
+                if sdr + edr < bestDist * 1.15 && sdr < GPS_MATCH_KM && edr < GPS_MATCH_KM {
+                    bestDist = sdr + edr; best = (ride.route, true)
+                }
+            }
+        }
+        return best
+    }
+
+    func reverseRouteName(_ name: String) -> String {
+        if let m = name.firstMatch(of: /^(.+?)→(.+?)(（.*）)?$/) {
+            return "\(m.2)→\(m.1)\(m.3 ?? "")"
+        }
+        return name
+    }
+
+    func clearAll() {
+        rides = []
+        locations = []
+        routeColors = [:]
+        routeOrder = []
+        coordsCache = [:]
+        saveRides()
+    }
+
     func importFitResult(_ parsed: ParsedRide) {
         let ride = Ride(
             id: parsed.id,
@@ -292,7 +366,7 @@ class DataStore {
             let src = URL(fileURLWithPath: parsed.sourcePath)
             let dst = processedURL.appendingPathComponent(src.lastPathComponent)
             if FileManager.default.fileExists(atPath: src.path) && !FileManager.default.fileExists(atPath: dst.path) {
-                try FileManager.default.moveItem(at: src, to: dst)
+                try FileManager.default.copyItem(at: src, to: dst)
             }
         } catch {
             print("move processed failed: \(error)")

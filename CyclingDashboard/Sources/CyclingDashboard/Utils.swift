@@ -121,6 +121,15 @@ func locationHint(lat: Double, lng: Double, knownLocations: [Location]) async ->
     return nil
 }
 
+func formatTime(_ min: Double) -> String {
+    if min >= 60 {
+        let h = Int(min / 60)
+        let m = Int(min) % 60
+        return "\(h)h\(m)m"
+    }
+    return String(format: "%.0fm", min)
+}
+
 func hrZoneColor(zone: Int) -> Color {
     let colors = [Color(hex: "#4ECDC4"), Color(hex: "#FFD93D"), Color(hex: "#FF8C42"), Color(hex: "#E85D75"), Color(hex: "#C0392B")]
     guard zone >= 1 && zone <= 5 else { return .gray }

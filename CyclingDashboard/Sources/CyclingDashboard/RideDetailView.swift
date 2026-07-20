@@ -179,11 +179,4 @@ struct RideDetailView: View {
     }
 }
 
-func formatTime(_ min: Double) -> String {
-    if min >= 60 {
-        let h = Int(min / 60)
-        let m = Int(min) % 60
-        return "\(h)h\(m)m"
-    }
-    return String(format: "%.0fm", min)
-}
+

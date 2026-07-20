@@ -1,14 +1,42 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import CoreLocation
 
 struct ImportView: View {
     @Environment(DataStore.self) var store
     @Environment(\.dismiss) var dismiss
+
     @State private var selectedFile: URL? = nil
     @State private var parsed: ParsedRide? = nil
-    @State private var routeName = ""
     @State private var isParsing = false
     @State private var errorMsg = ""
+
+    @State private var namingMode = 0
+    @State private var startName = ""
+    @State private var endName = ""
+    @State private var pathName = ""
+    @State private var loopName = ""
+    @State private var customName = ""
+
+    @State private var matchedRoute: String? = nil
+    @State private var isReversed = false
+
+    var routeName: String {
+        if let m = matchedRoute { return m }
+        switch namingMode {
+        case 0:
+            if startName.isEmpty || endName.isEmpty { return "" }
+            return pathName.isEmpty
+                ? "\(startName)→\(endName)"
+                : "\(startName)→\(endName)（\(pathName)）"
+        case 1:
+            return loopName.isEmpty ? "" : "\(loopName)绕圈"
+        case 2:
+            return customName
+        default:
+            return ""
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -17,11 +45,9 @@ struct ImportView: View {
                 .foregroundStyle(AppTheme.text)
 
             HStack {
-                Button("选择文件") {
-                    pickFile()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(AppTheme.primary)
+                Button("选择文件") { pickFile() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppTheme.primary)
                 if let f = selectedFile {
                     Text(f.lastPathComponent)
                         .foregroundStyle(AppTheme.textMuted)
@@ -38,10 +64,20 @@ struct ImportView: View {
                     .foregroundStyle(AppTheme.danger)
             }
 
-            if parsed != nil {
-                TextField("路线名称", text: $routeName)
-                    .frame(width: 300)
-                    .textFieldStyle(.roundedBorder)
+            if let p = parsed {
+                rideSummary(p)
+
+                if let route = matchedRoute {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(AppTheme.success)
+                        Text(route)
+                            .foregroundStyle(AppTheme.success)
+                    }
+                    .padding(.vertical, 4)
+                } else {
+                    namingSection
+                }
             }
 
             Spacer()
@@ -52,16 +88,99 @@ struct ImportView: View {
                     .foregroundStyle(AppTheme.text)
                 Spacer()
                 if parsed != nil {
-                    Button("导入") { confirmImport() }
+                    Button(matchedRoute != nil ? "导入" : "导入") { confirmImport() }
                         .keyboardShortcut(.defaultAction)
                         .buttonStyle(.borderedProminent)
                         .tint(AppTheme.primary)
+                        .disabled(routeName.isEmpty)
                 }
             }
         }
         .padding()
-        .frame(width: 420, height: 250)
+        .frame(width: 520, height: matchedRoute != nil ? 260 : 400)
         .background(AppTheme.background.ignoresSafeArea())
+    }
+
+    func rideSummary(_ p: ParsedRide) -> some View {
+        HStack(spacing: 16) {
+            Label(p.date, systemImage: "calendar")
+            Label(String(format: "%.1f km", p.distanceKm), systemImage: "bicycle")
+            Label(formatTime(p.movingTimeMin), systemImage: "clock")
+        }
+        .font(.caption)
+        .foregroundStyle(AppTheme.textMuted)
+        .padding(.vertical, 4)
+    }
+
+    var namingSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("新路线命名")
+                .font(.sectionTitle)
+                .foregroundStyle(AppTheme.text)
+
+            Picker("", selection: $namingMode) {
+                Text("A→B").tag(0)
+                Text("绕圈").tag(1)
+                Text("自定义").tag(2)
+            }
+            .pickerStyle(.segmented)
+
+            Group {
+                switch namingMode {
+                case 0:
+                    HStack(spacing: 8) {
+                        TextField("起点", text: $startName)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: .infinity)
+                        Text("→")
+                            .foregroundStyle(AppTheme.textMuted)
+                        TextField("终点", text: $endName)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: .infinity)
+                    }
+                    TextField("途经（可选）", text: $pathName)
+                        .textFieldStyle(.roundedBorder)
+                case 1:
+                    TextField("地点名称，如 奥体中心", text: $loopName)
+                        .textFieldStyle(.roundedBorder)
+                default:
+                    TextField("路线名称", text: $customName)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+            .onAppear { prefillNames() }
+        }
+    }
+
+    func prefillNames() {
+        guard let p = parsed else { return }
+        let isLoop = haversineKm(lat1: p.startLat ?? 0, lng1: p.startLng ?? 0, lat2: p.endLat ?? 0, lng2: p.endLng ?? 0) < 1.0
+        let knownLocations = store.locations
+        if isLoop {
+            namingMode = 1
+            if let lat = p.startLat, let lng = p.startLng {
+                Task {
+                    let hint = await locationHint(lat: lat, lng: lng, knownLocations: knownLocations)
+                    await MainActor.run { loopName = hint ?? String(format: "%.4f, %.4f", lat, lng) }
+                }
+            }
+        } else {
+            namingMode = 0
+            let sn = p.startLat.flatMap { lat in p.startLng.map { lng in (lat, lng) } }
+            let en = p.endLat.flatMap { lat in p.endLng.map { lng in (lat, lng) } }
+            if let (lat, lng) = sn {
+                Task {
+                    let hint = await locationHint(lat: lat, lng: lng, knownLocations: knownLocations)
+                    await MainActor.run { startName = hint ?? String(format: "%.4f, %.4f", lat, lng) }
+                }
+            }
+            if let (lat, lng) = en {
+                Task {
+                    let hint = await locationHint(lat: lat, lng: lng, knownLocations: knownLocations)
+                    await MainActor.run { endName = hint ?? String(format: "%.4f, %.4f", lat, lng) }
+                }
+            }
+        }
     }
 
     func pickFile() {
@@ -73,6 +192,8 @@ struct ImportView: View {
         selectedFile = url
         isParsing = true
         errorMsg = ""
+        matchedRoute = nil
+        parsed = nil
 
         Task {
             let parser = FitParser(projectRoot: store.projectRoot)
@@ -80,9 +201,17 @@ struct ImportView: View {
                 if result.loopSegment == nil {
                     result.loopSegment = detectLoopSegment(result.trackPoints)
                 }
+                let match = store.matchRouteByGPS(
+                    startLat: result.startLat, startLng: result.startLng,
+                    endLat: result.endLat, endLng: result.endLng,
+                    trackPoints: result.trackPoints, distanceKm: result.distanceKm
+                )
                 await MainActor.run {
                     parsed = result
-                    routeName = result.route.isEmpty ? "骑行 \(result.date)" : result.route
+                    if let (route, rev) = match {
+                        matchedRoute = rev ? store.reverseRouteName(route) : route
+                        isReversed = rev
+                    }
                     isParsing = false
                 }
             } else {

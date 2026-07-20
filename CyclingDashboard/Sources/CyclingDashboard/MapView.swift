@@ -22,24 +22,24 @@ struct MapView: View {
             ForEach(store.routes, id: \.self) { route in
                 let isSelected = selectedRoute == route
                 ForEach(store.ridesByRoute[route] ?? []) { ride in
-                    let points = store.coords(for: ride)
+                    let points = store.coords(for: ride).map(wgs84ToGcj02)
                     if !points.isEmpty {
                         MapPolyline(coordinates: points)
-                            .stroke(routeColor(route, isSelected: isSelected), style: StrokeStyle(lineWidth: isSelected ? 5 : 2, lineCap: .round, lineJoin: .round))
+                            .stroke(routeColor(route, isSelected: isSelected), style: StrokeStyle(lineWidth: isSelected ? 6 : 3, lineCap: .round, lineJoin: .round))
                     }
                 }
             }
 
             if let route = selectedRoute,
                let start = routeStart(for: route) {
-                Annotation("起", coordinate: start) {
+                Annotation("起", coordinate: wgs84ToGcj02(start)) {
                     StartMarker()
                 }
             }
 
             if let route = selectedRoute,
                let end = routeEnd(for: route) {
-                Annotation("终", coordinate: end) {
+                Annotation("终", coordinate: wgs84ToGcj02(end)) {
                     EndMarker()
                 }
             }
@@ -74,7 +74,7 @@ struct MapView: View {
                 prepareAddLocation()
             }
         }
-        .mapStyle(.standard(elevation: .realistic))
+        .mapStyle(.standard(elevation: .flat))
         .mapControls {
             MapPitchToggle()
             MapCompass()
@@ -216,15 +216,15 @@ struct EndMarker: View {
 func cameraPosition(for route: String?, store: DataStore) -> MapCameraPosition {
     let points: [CLLocationCoordinate2D]
     if let route = route, let rides = store.ridesByRoute[route] {
-        points = rides.flatMap { $0.trackPoints.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) } }
+        points = rides.flatMap { $0.trackPoints.map { wgs84ToGcj02(CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng)) } }
     } else {
-        points = store.rides.flatMap { $0.trackPoints.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) } }
+        points = store.rides.flatMap { $0.trackPoints.map { wgs84ToGcj02(CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng)) } }
     }
     return cameraPosition(for: points)
 }
 
 func cameraPosition(for points: [CLLocationCoordinate2D]) -> MapCameraPosition {
-    guard points.count > 1 else { return .region(MKCoordinateRegion()) }
+    guard points.count > 1 else { return .region(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 39.9, longitude: 116.4), span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05))) }
     let lats = points.map { $0.latitude }
     let lngs = points.map { $0.longitude }
     let minLat = lats.min() ?? 0
@@ -240,6 +240,6 @@ func cameraPosition(for points: [CLLocationCoordinate2D]) -> MapCameraPosition {
 }
 
 func cameraPosition(for ride: Ride) -> MapCameraPosition {
-    let points = ride.trackPoints.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) }
+    let points = ride.trackPoints.map { wgs84ToGcj02(CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng)) }
     return cameraPosition(for: points)
 }
