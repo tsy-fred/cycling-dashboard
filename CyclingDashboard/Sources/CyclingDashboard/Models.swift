@@ -200,6 +200,18 @@ struct Location: Codable, Identifiable, Hashable {
     var lat: Double
     var lng: Double
     var manual: Bool
+    var radiusKm: Double
+    var isAuto: Bool
+
+    init(id: String, name: String, lat: Double, lng: Double, manual: Bool, radiusKm: Double = 0.5, isAuto: Bool = false) {
+        self.id = id
+        self.name = name
+        self.lat = lat
+        self.lng = lng
+        self.manual = manual
+        self.radiusKm = radiusKm
+        self.isAuto = isAuto
+    }
 }
 
 struct RidesData: Codable {

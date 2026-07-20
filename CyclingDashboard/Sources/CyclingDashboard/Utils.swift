@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import MapKit
+import CoreLocation
 
 func haversineKm(_ p1: CLLocationCoordinate2D, _ p2: CLLocationCoordinate2D) -> Double {
     let R = 6371.0
@@ -101,6 +102,23 @@ func cumulativeDistances(_ pts: [TrackPoint]) -> [Double] {
         dists.append(dists[i - 1] + d)
     }
     return dists
+}
+
+func locationHint(lat: Double, lng: Double, knownLocations: [Location]) async -> String? {
+    let nearby = knownLocations.filter { haversineKm(lat1: $0.lat, lng1: $0.lng, lat2: lat, lng2: lng) < $0.radiusKm }.first
+    if nearby != nil { return nearby!.name }
+    let loc = CLLocation(latitude: lat, longitude: lng)
+    do {
+        let placemarks = try await CLGeocoder().reverseGeocodeLocation(loc)
+        if let placemark = placemarks.first {
+            let parts = [placemark.locality, placemark.subLocality, placemark.name].compactMap { $0 }
+            if !parts.isEmpty { return parts.prefix(3).joined(separator: "·") }
+        }
+    } catch {}
+    if let nearby2 = knownLocations.filter({ haversineKm(lat1: $0.lat, lng1: $0.lng, lat2: lat, lng2: lng) < 1.0 }).first {
+        return "\(nearby2.name)附近"
+    }
+    return nil
 }
 
 func hrZoneColor(zone: Int) -> Color {

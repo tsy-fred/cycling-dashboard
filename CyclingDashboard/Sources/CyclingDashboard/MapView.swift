@@ -6,6 +6,17 @@ struct MapView: View {
     var selectedRoute: String?
     @Binding var camera: MapCameraPosition
 
+    @State private var showAddSheet = false
+    @State private var addName = ""
+    @State private var addLat = 0.0
+    @State private var addLng = 0.0
+    @State private var showRenameSheet = false
+    @State private var renameId = ""
+    @State private var renameName = ""
+    @State private var showRadiusSheet = false
+    @State private var radiusId = ""
+    @State private var radiusKm = 0.5
+
     var body: some View {
         Map(position: $camera) {
             ForEach(store.routes, id: \.self) { route in
@@ -32,11 +43,98 @@ struct MapView: View {
                     EndMarker()
                 }
             }
+
+            ForEach(store.locations) { location in
+                Annotation(
+                    location.name,
+                    coordinate: wgs84ToGcj02(CLLocationCoordinate2D(latitude: location.lat, longitude: location.lng))
+                ) {
+                    LocationPinView(location: location)
+                        .contextMenu {
+                            Button("改名称") {
+                                renameId = location.id
+                                renameName = location.name
+                                showRenameSheet = true
+                            }
+                            Button("调整范围") {
+                                radiusId = location.id
+                                radiusKm = location.radiusKm
+                                showRadiusSheet = true
+                            }
+                            Divider()
+                            Button("删除", role: .destructive) {
+                                store.removeLocation(id: location.id)
+                            }
+                        }
+                }
+            }
+        }
+        .contextMenu {
+            Button("在此添加地标…") {
+                prepareAddLocation()
+            }
         }
         .mapStyle(.standard(elevation: .realistic))
         .mapControls {
             MapPitchToggle()
             MapCompass()
+        }
+        .sheet(isPresented: $showAddSheet) {
+            VStack(spacing: 16) {
+                Text("新增地标").font(.headline)
+                TextField("地标名称", text: $addName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 200)
+                HStack(spacing: 12) {
+                    Button("取消") { showAddSheet = false }
+                    Button("确认") {
+                        store.addLocation(name: addName, lat: addLat, lng: addLng)
+                        showAddSheet = false
+                    }
+                    .disabled(addName.isEmpty)
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding()
+            .frame(width: 260)
+        }
+        .sheet(isPresented: $showRenameSheet) {
+            VStack(spacing: 16) {
+                Text("改名称").font(.headline)
+                TextField("新名称", text: $renameName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 200)
+                HStack(spacing: 12) {
+                    Button("取消") { showRenameSheet = false }
+                    Button("确认") {
+                        store.renameLocation(id: renameId, name: renameName)
+                        showRenameSheet = false
+                    }
+                    .disabled(renameName.isEmpty)
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding()
+            .frame(width: 260)
+        }
+        .sheet(isPresented: $showRadiusSheet) {
+            VStack(spacing: 16) {
+                Text("隐形范围").font(.headline)
+                Slider(value: $radiusKm, in: 0.1...2.0, step: 0.1)
+                Text("\(String(format: "%.1f", radiusKm)) km")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                HStack(spacing: 12) {
+                    Button("取消") { showRadiusSheet = false }
+                    Button("确认") {
+                        store.updateLocationRadius(id: radiusId, radiusKm: radiusKm)
+                        showRadiusSheet = false
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding()
+            .frame(width: 260)
         }
     }
 
@@ -55,6 +153,37 @@ struct MapView: View {
     func routeColor(_ route: String, isSelected: Bool) -> Color {
         if isSelected { return AppTheme.primary }
         return store.color(for: route).opacity(0.8)
+    }
+
+    func prepareAddLocation() {
+        if let region = camera.region {
+            addLat = region.center.latitude
+            addLng = region.center.longitude
+            addName = ""
+            showAddSheet = true
+        }
+    }
+}
+
+struct LocationPinView: View {
+    let location: Location
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(location.isAuto ? .orange : AppTheme.primary)
+                .frame(width: 16, height: 16)
+                .overlay(
+                    Circle()
+                        .strokeBorder(.white, lineWidth: 2)
+                )
+            if location.isAuto {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 7))
+                    .foregroundColor(.white)
+            }
+        }
+        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
     }
 }
 

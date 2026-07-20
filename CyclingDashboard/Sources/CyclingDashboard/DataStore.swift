@@ -9,6 +9,7 @@ class DataStore {
     var routeColors: [String: String] = [:]
     var routeOrder: [String] = []
     var coordsCache: [String: [CLLocationCoordinate2D]] = [:]
+    var dismissedAutoCoords: [(lat: Double, lng: Double)] = []
 
     var projectRoot: URL {
         if let saved = UserDefaults.standard.url(forKey: "projectRoot"), FileManager.default.fileExists(atPath: saved.appendingPathComponent("data").path) {
@@ -33,6 +34,7 @@ class DataStore {
     var dataURL: URL { projectRoot.appendingPathComponent("data") }
     var ridesURL: URL { dataURL.appendingPathComponent("rides.json") }
     var locationsURL: URL { dataURL.appendingPathComponent("locations.json") }
+    var dismissedAutoURL: URL { dataURL.appendingPathComponent("dismissed_auto.json") }
     var processedURL: URL { projectRoot.appendingPathComponent("__processed__") }
 
     var routes: [String] {
@@ -46,6 +48,8 @@ class DataStore {
     func load() {
         loadRides()
         loadLocations()
+        loadDismissedAutoCoords()
+        autoDetectLocations()
     }
 
     func loadRides() {
@@ -101,12 +105,37 @@ class DataStore {
     func saveLocations() {
         do {
             try FileManager.default.createDirectory(at: dataURL, withIntermediateDirectories: true)
-            let manual = locations.filter { $0.manual }
-            let data = try JSONEncoder().encode(manual)
+            let data = try JSONEncoder().encode(locations)
             try data.write(to: locationsURL, options: .atomic)
         } catch {
             print("save locations failed: \(error)")
         }
+    }
+
+    func loadDismissedAutoCoords() {
+        guard FileManager.default.fileExists(atPath: dismissedAutoURL.path) else { return }
+        do {
+            let data = try Data(contentsOf: dismissedAutoURL)
+            let coords = try JSONDecoder().decode([[Double]].self, from: data)
+            dismissedAutoCoords = coords.map { ($0[0], $0[1]) }
+        } catch {
+            print("load dismissed auto coords failed: \(error)")
+        }
+    }
+
+    func saveDismissedAutoCoords() {
+        do {
+            try FileManager.default.createDirectory(at: dataURL, withIntermediateDirectories: true)
+            let coords = dismissedAutoCoords.map { [$0.lat, $0.lng] }
+            let data = try JSONEncoder().encode(coords)
+            try data.write(to: dismissedAutoURL, options: .atomic)
+        } catch {
+            print("save dismissed auto coords failed: \(error)")
+        }
+    }
+
+    func isDismissed(lat: Double, lng: Double) -> Bool {
+        dismissedAutoCoords.contains { haversineKm(lat1: $0.lat, lng1: $0.lng, lat2: lat, lng2: lng) < 0.3 }
     }
 
     func color(for route: String) -> Color {
@@ -164,13 +193,17 @@ class DataStore {
         saveRides()
     }
 
-    func addLocation(name: String, lat: Double, lng: Double) {
+    func addLocation(name: String, lat: Double, lng: Double, radiusKm: Double = 0.5, isAuto: Bool = false) {
         let id = "loc_\(Date().timeIntervalSince1970)_\(Int.random(in: 1000..<9999))"
-        locations.append(Location(id: id, name: name, lat: lat, lng: lng, manual: true))
+        locations.append(Location(id: id, name: name, lat: lat, lng: lng, manual: !isAuto, radiusKm: radiusKm, isAuto: isAuto))
         saveLocations()
     }
 
     func removeLocation(id: String) {
+        if let loc = locations.first(where: { $0.id == id }), loc.isAuto {
+            dismissedAutoCoords.append((loc.lat, loc.lng))
+            saveDismissedAutoCoords()
+        }
         locations.removeAll { $0.id == id }
         saveLocations()
     }
@@ -179,6 +212,44 @@ class DataStore {
         if let idx = locations.firstIndex(where: { $0.id == id }) {
             locations[idx].name = name
             saveLocations()
+        }
+    }
+
+    func updateLocationRadius(id: String, radiusKm: Double) {
+        if let idx = locations.firstIndex(where: { $0.id == id }) {
+            locations[idx].radiusKm = radiusKm
+            saveLocations()
+        }
+    }
+
+    func autoDetectLocations() {
+        let AUTO_RADIUS_KM = 0.5
+        let MIN_COUNT = 3
+        var pointCounts: [String: (lat: Double, lng: Double, count: Int)] = [:]
+
+        for ride in rides {
+            for point in [(ride.startLat, ride.startLng), (ride.endLat, ride.endLng)] {
+                guard let lat = point.0, let lng = point.1 else { continue }
+                let key = "\(String(format: "%.4f", lat)),\(String(format: "%.4f", lng))"
+                if var existing = pointCounts[key] {
+                    existing.count += 1
+                    pointCounts[key] = existing
+                } else {
+                    pointCounts[key] = (lat, lng, 1)
+                }
+            }
+        }
+
+        for (_, point) in pointCounts {
+            guard point.count >= MIN_COUNT else { continue }
+
+            let alreadyExists = locations.contains { haversineKm(lat1: $0.lat, lng1: $0.lng, lat2: point.lat, lng2: point.lng) < AUTO_RADIUS_KM }
+            let wasDismissed = isDismissed(lat: point.lat, lng: point.lng)
+
+            if !alreadyExists && !wasDismissed {
+                let hint = "\(String(format: "%.4f", point.lat)),\(String(format: "%.4f", point.lng))"
+                addLocation(name: hint, lat: point.lat, lng: point.lng, isAuto: true)
+            }
         }
     }
 
@@ -226,6 +297,8 @@ class DataStore {
         } catch {
             print("move processed failed: \(error)")
         }
+
+        autoDetectLocations()
     }
 }
 
