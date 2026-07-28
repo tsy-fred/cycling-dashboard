@@ -13,6 +13,17 @@ screenshot.png
 scripts/merge_fit.py
 TODO.md
 
+# AI 工具配置 — 不上传
+AGENTS.md
+CLAUDE.md
+.opencode/
+
+# IDE
+.vscode/
+
+# 原始 .fit 文件（导入后归档用）
+fit/
+
 # Swift
 .build/
 .swiftpm/
