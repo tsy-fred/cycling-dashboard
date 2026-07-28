@@ -19,7 +19,7 @@ struct LoopSegmentEditor: View {
 
     init(ride: Ride, onSave: @escaping (LoopSegment) -> Void) {
         self.ride = ride
-        self.coords = ride.trackPoints.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) }
+        self.coords = ride.trackPoints.map { wgs84ToGcj02(CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng)) }
         self.onSave = onSave
         _camera = State(initialValue: cameraPosition(for: ride))
         if let seg = ride.loopSegment {
@@ -142,8 +142,8 @@ struct LoopSegmentEditor: View {
     func pick(_ coord: CLLocationCoordinate2D) {
         guard phase != .done else { return }
         var bestIdx = 0, bestDist = Double.infinity
-        for (i, pt) in ride.trackPoints.enumerated() {
-            let d = haversineKm(lat1: coord.latitude, lng1: coord.longitude, lat2: pt.lat, lng2: pt.lng)
+        for (i, pt) in coords.enumerated() {
+            let d = haversineKm(lat1: coord.latitude, lng1: coord.longitude, lat2: pt.latitude, lng2: pt.longitude)
             if d < bestDist { bestDist = d; bestIdx = i }
         }
         if phase == .start {

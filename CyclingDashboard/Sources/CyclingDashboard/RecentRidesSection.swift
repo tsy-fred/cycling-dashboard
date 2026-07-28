@@ -91,14 +91,36 @@ struct RideDetailSheet: View {
     }
 }
 
+enum RideSortKey: String, CaseIterable {
+    case date = "日期"
+    case distance = "距离"
+    case speed = "均速"
+    case elev = "爬升"
+}
+
 struct RidesListSheet: View {
     var rides: [Ride]
     var route: String?
     @Environment(\.dismiss) var dismiss
+    @State private var sortKey: RideSortKey = .date
+    @State private var sortAsc = false
+
+    var sortedRides: [Ride] {
+        rides.sorted { a, b in
+            let less: Bool
+            switch sortKey {
+            case .date: less = a.date < b.date
+            case .distance: less = a.distanceKm < b.distanceKm
+            case .speed: less = a.avgSpeedKmh < b.avgSpeedKmh
+            case .elev: less = a.elevGainM < b.elevGainM
+            }
+            return sortAsc ? less : !less
+        }
+    }
 
     var body: some View {
         NavigationStack {
-            List(rides.sorted { $0.date > $1.date }) { ride in
+            List(sortedRides) { ride in
                 NavigationLink(value: ride) {
                     RecentRideRow(ride: ride)
                 }
@@ -110,6 +132,18 @@ struct RidesListSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("关闭") { dismiss() }
+                }
+                ToolbarItem {
+                    Menu {
+                        Picker("排序", selection: $sortKey) {
+                            ForEach(RideSortKey.allCases, id: \.self) { key in
+                                Text(key.rawValue).tag(key)
+                            }
+                        }
+                        Toggle("升序", isOn: $sortAsc)
+                    } label: {
+                        Label("排序", systemImage: "arrow.up.arrow.down")
+                    }
                 }
             }
             .background(AppTheme.background.ignoresSafeArea())

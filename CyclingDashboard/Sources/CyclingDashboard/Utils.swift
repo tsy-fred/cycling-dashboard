@@ -18,16 +18,23 @@ func haversineKm(lat1: Double, lng1: Double, lat2: Double, lng2: Double) -> Doub
                 CLLocationCoordinate2D(latitude: lat2, longitude: lng2))
 }
 
-// 在 segment 范围内数圈: 以 segment 起点为圆心, 500m 阈值进出
+// 在 segment 范围内数圈: 以 segment 起点为圆心, 阈值按段内最大距离自适应 + 滞回防抖
 func countLapsInSegment(_ pts: [TrackPoint], startIdx: Int, endIdx: Int) -> Int {
     guard endIdx - startIdx >= 20 else { return 1 }
     let s = pts[startIdx]
+    var maxD = 0.0
+    for i in startIdx...endIdx {
+        let d = haversineKm(lat1: pts[i].lat, lng1: pts[i].lng, lat2: s.lat, lng2: s.lng)
+        if d > maxD { maxD = d }
+    }
+    let exitT = min(0.5, maxD * 0.6)
+    let enterT = exitT * 0.4
     var passes = 0, inZone = true
     for i in (startIdx + 1)...endIdx {
         let d = haversineKm(lat1: pts[i].lat, lng1: pts[i].lng, lat2: s.lat, lng2: s.lng)
-        if d >= 0.5 {
+        if inZone && d >= exitT {
             inZone = false
-        } else if !inZone {
+        } else if !inZone && d <= enterT {
             passes += 1
             inZone = true
         }
@@ -35,7 +42,7 @@ func countLapsInSegment(_ pts: [TrackPoint], startIdx: Int, endIdx: Int) -> Int 
     return max(1, passes)
 }
 
-// 自动检测绕圈段: 点密度最高的区域作为绕圈中心, 第一次进入 ~ 最后一次离开
+// 自动检测绕圈段: 点密度最高的区域取质心作为绕圈中心(跨骑行稳定), 第一次进入 ~ 最后一次离开
 func detectLoopSegment(_ pts: [TrackPoint]) -> LoopSegment? {
     guard pts.count >= 50 else { return nil }
     let step = max(1, pts.count / 80)
@@ -49,10 +56,19 @@ func detectLoopSegment(_ pts: [TrackPoint]) -> LoopSegment? {
         if count > bestCount { bestCount = count; bestIdx = i }
         i += step
     }
-    let c = pts[bestIdx]
+    var sumLat = 0.0, sumLng = 0.0, n = 0
+    for pt in pts {
+        if haversineKm(lat1: pt.lat, lng1: pt.lng, lat2: pts[bestIdx].lat, lng2: pts[bestIdx].lng) < 0.3 {
+            sumLat += pt.lat
+            sumLng += pt.lng
+            n += 1
+        }
+    }
+    guard n > 0 else { return nil }
+    let cLat = sumLat / Double(n), cLng = sumLng / Double(n)
     var startIdx = -1, endIdx = -1
     for k in 0..<pts.count {
-        if haversineKm(lat1: pts[k].lat, lng1: pts[k].lng, lat2: c.lat, lng2: c.lng) < 0.4 {
+        if haversineKm(lat1: pts[k].lat, lng1: pts[k].lng, lat2: cLat, lng2: cLng) < 0.4 {
             if startIdx == -1 { startIdx = k }
             endIdx = k
         }

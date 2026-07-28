@@ -3,14 +3,24 @@ import SwiftUI
 struct StatsSection: View {
     var rides: [Ride]
     var route: String?
+    @Binding var month: String?
 
-    var totalDistance: Double { rides.reduce(0) { $0 + $1.distanceKm } }
-    var totalTime: Double { rides.reduce(0) { $0 + $1.movingTimeMin } }
-    var avgSpeed: Double { rides.isEmpty ? 0 : rides.reduce(0) { $0 + $1.avgSpeedKmh } / Double(rides.count) }
-    var maxSpeed: Double { rides.map { $0.maxSpeedKmh }.max() ?? 0 }
-    var totalElev: Double { rides.reduce(0) { $0 + $1.elevGainM } }
-    var totalCalories: Double { rides.reduce(0) { $0 + $1.calories } }
-    var avgHr: Double { rides.isEmpty ? 0 : rides.reduce(0) { $0 + $1.avgHr } / Double(rides.count) }
+    var availableMonths: [String] {
+        Array(Set(rides.compactMap { $0.date.count >= 7 ? String($0.date.prefix(7)) : nil })).sorted(by: >)
+    }
+
+    var filtered: [Ride] {
+        guard let month else { return rides }
+        return rides.filter { $0.date.hasPrefix(month) }
+    }
+
+    var totalDistance: Double { filtered.reduce(0) { $0 + $1.distanceKm } }
+    var totalTime: Double { filtered.reduce(0) { $0 + $1.movingTimeMin } }
+    var avgSpeed: Double { filtered.isEmpty ? 0 : filtered.reduce(0) { $0 + $1.avgSpeedKmh } / Double(filtered.count) }
+    var maxSpeed: Double { filtered.map { $0.maxSpeedKmh }.max() ?? 0 }
+    var totalElev: Double { filtered.reduce(0) { $0 + $1.elevGainM } }
+    var totalCalories: Double { filtered.reduce(0) { $0 + $1.calories } }
+    var avgHr: Double { filtered.isEmpty ? 0 : filtered.reduce(0) { $0 + $1.avgHr } / Double(filtered.count) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -19,6 +29,7 @@ struct StatsSection: View {
                     .font(.sectionTitle)
                     .foregroundStyle(AppTheme.text)
                 Spacer()
+                monthPicker
             }
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 150))], spacing: 12) {
@@ -29,9 +40,39 @@ struct StatsSection: View {
                 StatBox(value: String(format: "%.0f", totalElev), unit: "m", label: "爬升", icon: "mountain.2", color: AppTheme.success)
                 StatBox(value: String(format: "%.0f", totalCalories), unit: "kcal", label: "消耗", icon: "flame", color: AppTheme.danger)
                 StatBox(value: String(format: "%.0f", avgHr), unit: "bpm", label: "平均心率", icon: "heart.fill", color: Color.pink)
-                StatBox(value: "\(rides.count)", unit: "次", label: "骑行次数", icon: "figure.outdoor.cycle", color: AppTheme.secondary)
+                StatBox(value: "\(filtered.count)", unit: "次", label: "骑行次数", icon: "figure.outdoor.cycle", color: AppTheme.secondary)
             }
         }
+    }
+
+    var monthPicker: some View {
+        Menu {
+            Button("总计") { month = nil }
+            if !availableMonths.isEmpty {
+                Divider()
+                ForEach(availableMonths, id: \.self) { m in
+                    Button(monthLabel(m)) { month = m }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(month.map { monthLabel($0) } ?? "总计")
+                    .font(.cardLabel)
+                    .foregroundStyle(AppTheme.text)
+                Image(systemName: "chevron.down")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.textMuted)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .background(AppTheme.surface)
+            .clipShape(Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(AppTheme.border, lineWidth: 1)
+            )
+        }
+        .menuStyle(.button)
     }
 }
 

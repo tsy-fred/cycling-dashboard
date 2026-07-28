@@ -275,24 +275,22 @@ class DataStore {
                 guard rIsLoop else { continue }
                 let sd = haversineKm(lat1: startLat, lng1: startLng, lat2: rsLat, lng2: rsLng)
                 guard sd < GPS_MATCH_KM else { continue }
-                let newPts = [0.25, 0.5, 0.75].compactMap { f -> TrackPoint? in
-                    let idx = Int(Double(trackPoints.count) * f)
-                    guard idx < trackPoints.count else { return nil }
-                    return trackPoints[idx]
+                // 形状匹配: 新轨迹采样点到已有轨迹的最小距离均值, 圈数不同(1圈 vs 2圈)也能匹配同一条绕圈路线
+                let newSamples = sampleTrackPoints(trackPoints, target: 20)
+                let rSamples = sampleTrackPoints(ride.trackPoints, target: 200)
+                guard !newSamples.isEmpty, !rSamples.isEmpty else { continue }
+                var sum = 0.0
+                for p in newSamples {
+                    var minD = Double.infinity
+                    for q in rSamples {
+                        let d = haversineKm(lat1: p.lat, lng1: p.lng, lat2: q.lat, lng2: q.lng)
+                        if d < minD { minD = d }
+                    }
+                    sum += minD
                 }
-                let rPts = [0.25, 0.5, 0.75].compactMap { f -> CLLocationCoordinate2D? in
-                    let idx = Int(Double(ride.trackPoints.count) * f)
-                    guard idx < ride.trackPoints.count else { return nil }
-                    return CLLocationCoordinate2D(latitude: ride.trackPoints[idx].lat, longitude: ride.trackPoints[idx].lng)
-                }
-                guard newPts.count == 3, rPts.count == 3 else { continue }
-                let d1 = haversineKm(CLLocationCoordinate2D(latitude: newPts[0].lat, longitude: newPts[0].lng), rPts[0])
-                let d2 = haversineKm(CLLocationCoordinate2D(latitude: newPts[1].lat, longitude: newPts[1].lng), rPts[1])
-                let d3 = haversineKm(CLLocationCoordinate2D(latitude: newPts[2].lat, longitude: newPts[2].lng), rPts[2])
-                let avgD = (d1 + d2 + d3) / 3
-                let distDiff = abs(distanceKm - ride.distanceKm)
-                if avgD < 1 && distDiff < 2 && avgD * 2 + distDiff < bestDist {
-                    bestDist = avgD * 2 + distDiff
+                let avgMinD = sum / Double(newSamples.count)
+                if avgMinD < 0.2 && avgMinD < bestDist {
+                    bestDist = avgMinD
                     best = (ride.route, false)
                 }
             } else {

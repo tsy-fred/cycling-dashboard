@@ -8,6 +8,7 @@ struct DashboardView: View {
     @State private var camera: MapCameraPosition = .region(MKCoordinateRegion())
     @State private var showImport = false
     @State private var showAllRides = false
+    @State private var statsMonth: String? = nil
 
     var selectedRides: [Ride] {
         if let route = selectedRoute {
@@ -20,7 +21,8 @@ struct DashboardView: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 20) {
                 mapSection
-                StatsSection(rides: selectedRides, route: selectedRoute)
+                StatsSection(rides: selectedRides, route: selectedRoute, month: $statsMonth)
+                MonthlyChartView(rides: selectedRides)
                 RouteCardsSection(selectedRoute: $selectedRoute)
                 RecentRidesSection(rides: selectedRides, route: selectedRoute, showAllRides: $showAllRides)
             }
@@ -52,6 +54,7 @@ struct DashboardView: View {
         }
         .onChange(of: isDarkMode) { _, _ in applyAppearance() }
         .onChange(of: selectedRoute) { _, new in
+            statsMonth = nil
             withAnimation(.easeInOut(duration: 0.4)) {
                 camera = cameraPosition(for: new, store: store)
             }
