@@ -1,10 +1,18 @@
 import SwiftUI
 import MapKit
 
+enum MapStyleType: String, CaseIterable {
+    case standard = "标准"
+    case imagery = "卫星"
+    case hybrid = "混合"
+    case muted = "单色"
+}
+
 struct MapView: View {
     var store: DataStore
     var selectedRoute: String?
     @Binding var camera: MapCameraPosition
+    @Binding var mapStyle: MapStyleType
 
     @State private var showAddSheet = false
     @State private var addName = ""
@@ -17,67 +25,103 @@ struct MapView: View {
     @State private var radiusId = ""
     @State private var radiusKm = 0.5
 
+    var resolvedStyle: MapStyle {
+        let s: MapStyle
+        switch mapStyle {
+        case .imagery: s = .imagery
+        case .hybrid: s = .hybrid(elevation: .flat)
+        case .muted: s = .standard(elevation: .flat)
+        case .standard: s = .standard(elevation: .flat)
+        }
+        return s
+    }
+
     var body: some View {
-        Map(position: $camera) {
-            ForEach(store.routes, id: \.self) { route in
-                let isSelected = selectedRoute == route
-                ForEach(store.ridesByRoute[route] ?? []) { ride in
-                    let points = store.coords(for: ride).map(wgs84ToGcj02)
-                    if !points.isEmpty {
-                        MapPolyline(coordinates: points)
-                            .stroke(routeColor(route, isSelected: isSelected), style: StrokeStyle(lineWidth: isSelected ? 6 : 3, lineCap: .round, lineJoin: .round))
+        ZStack(alignment: .topTrailing) {
+            Map(position: $camera) {
+                ForEach(store.routes, id: \.self) { route in
+                    let isSelected = selectedRoute == route
+                    ForEach(store.ridesByRoute[route] ?? []) { ride in
+                        let points = store.coords(for: ride).map(wgs84ToGcj02)
+                        if !points.isEmpty {
+                            MapPolyline(coordinates: points)
+                                .stroke(routeColor(route, isSelected: isSelected), style: StrokeStyle(lineWidth: isSelected ? 6 : 3, lineCap: .round, lineJoin: .round))
+                        }
+                    }
+                }
+
+                if let route = selectedRoute,
+                   let start = routeStart(for: route) {
+                    Annotation("起", coordinate: wgs84ToGcj02(start)) {
+                        StartMarker()
+                    }
+                }
+
+                if let route = selectedRoute,
+                   let end = routeEnd(for: route) {
+                    Annotation("终", coordinate: wgs84ToGcj02(end)) {
+                        EndMarker()
+                    }
+                }
+
+                ForEach(store.locations) { location in
+                    Annotation(
+                        location.name,
+                        coordinate: wgs84ToGcj02(CLLocationCoordinate2D(latitude: location.lat, longitude: location.lng))
+                    ) {
+                        LocationPinView(location: location)
+                            .contextMenu {
+                                Button("改名称") {
+                                    renameId = location.id
+                                    renameName = location.name
+                                    showRenameSheet = true
+                                }
+                                Button("调整范围") {
+                                    radiusId = location.id
+                                    radiusKm = location.radiusKm
+                                    showRadiusSheet = true
+                                }
+                                Divider()
+                                Button("删除", role: .destructive) {
+                                    store.removeLocation(id: location.id)
+                                }
+                            }
                     }
                 }
             }
-
-            if let route = selectedRoute,
-               let start = routeStart(for: route) {
-                Annotation("起", coordinate: wgs84ToGcj02(start)) {
-                    StartMarker()
+            .contextMenu {
+                Button("在此添加地标…") {
+                    prepareAddLocation()
                 }
             }
-
-            if let route = selectedRoute,
-               let end = routeEnd(for: route) {
-                Annotation("终", coordinate: wgs84ToGcj02(end)) {
-                    EndMarker()
-                }
+            .mapStyle(resolvedStyle)
+            .saturation(mapStyle == .muted ? 0 : 1)
+            .mapControls {
+                MapPitchToggle()
+                MapCompass()
             }
 
-            ForEach(store.locations) { location in
-                Annotation(
-                    location.name,
-                    coordinate: wgs84ToGcj02(CLLocationCoordinate2D(latitude: location.lat, longitude: location.lng))
-                ) {
-                    LocationPinView(location: location)
-                        .contextMenu {
-                            Button("改名称") {
-                                renameId = location.id
-                                renameName = location.name
-                                showRenameSheet = true
-                            }
-                            Button("调整范围") {
-                                radiusId = location.id
-                                radiusKm = location.radiusKm
-                                showRadiusSheet = true
-                            }
-                            Divider()
-                            Button("删除", role: .destructive) {
-                                store.removeLocation(id: location.id)
-                            }
-                        }
+            HStack(spacing: 0) {
+                ForEach(MapStyleType.allCases, id: \.self) { style in
+                    Button {
+                        mapStyle = style
+                    } label: {
+                        Text(style.rawValue)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(mapStyle == style ? .white : AppTheme.text)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(mapStyle == style ? AppTheme.primary : AppTheme.surface.opacity(0.85))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-        }
-        .contextMenu {
-            Button("在此添加地标…") {
-                prepareAddLocation()
-            }
-        }
-        .mapStyle(.standard(elevation: .flat))
-        .mapControls {
-            MapPitchToggle()
-            MapCompass()
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(AppTheme.border, lineWidth: 1)
+            )
+            .padding(12)
         }
         .sheet(isPresented: $showAddSheet) {
             VStack(spacing: 16) {
@@ -128,7 +172,7 @@ struct MapView: View {
                     Button("取消") { showRadiusSheet = false }
                     Button("确认") {
                         store.updateLocationRadius(id: radiusId, radiusKm: radiusKm)
-                        showRadiusSheet = false
+                        showRenameSheet = false
                     }
                     .buttonStyle(.borderedProminent)
                 }

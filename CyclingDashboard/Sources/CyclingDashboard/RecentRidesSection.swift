@@ -58,13 +58,18 @@ struct RecentRideRow: View {
                     .foregroundStyle(AppTheme.textMuted)
             }
             Spacer()
-            VStack(alignment: .trailing, spacing: 4) {
+            VStack(alignment: .trailing, spacing: 2) {
                 Text(String(format: "%.1f", ride.distanceKm))
                     .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundStyle(AppTheme.text)
-                Text("km")
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.textMuted)
+                HStack(spacing: 4) {
+                    if lapsCount(for: ride) > 0 {
+                        Text("\(lapsCount(for: ride)) 圈")
+                    }
+                    Text("km")
+                }
+                .font(.caption)
+                .foregroundStyle(AppTheme.textMuted)
             }
             Image(systemName: "chevron.right")
                 .font(.caption)
@@ -120,15 +125,18 @@ struct RidesListSheet: View {
 
     var body: some View {
         NavigationStack {
-            List(sortedRides) { ride in
-                NavigationLink(value: ride) {
-                    RecentRideRow(ride: ride)
+            ScrollView {
+                LazyVStack(spacing: 10) {
+                    ForEach(sortedRides) { ride in
+                        NavigationLink(destination: RideDetailView(ride: ride)) {
+                            RecentRideRow(ride: ride)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
+                .padding()
             }
             .navigationTitle(route ?? "全部骑行")
-            .navigationDestination(for: Ride.self) { ride in
-                RideDetailView(ride: ride)
-            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("关闭") { dismiss() }

@@ -9,6 +9,7 @@ struct DashboardView: View {
     @State private var showImport = false
     @State private var showAllRides = false
     @State private var statsMonth: String? = nil
+    @State private var mapStyle: MapStyleType = .standard
 
     var selectedRides: [Ride] {
         if let route = selectedRoute {
@@ -104,7 +105,7 @@ struct DashboardView: View {
                     .foregroundStyle(AppTheme.textMuted)
             }
 
-            MapView(store: store, selectedRoute: selectedRoute, camera: $camera)
+            MapView(store: store, selectedRoute: selectedRoute, camera: $camera, mapStyle: $mapStyle)
                 .frame(height: 420)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .overlay(

@@ -137,6 +137,12 @@ func locationHint(lat: Double, lng: Double, knownLocations: [Location]) async ->
     return nil
 }
 
+func lapsCount(for ride: Ride) -> Int {
+    if ride.manualLaps > 0 { return ride.manualLaps }
+    if let seg = ride.loopSegment, seg.laps > 1 { return seg.laps }
+    return 0
+}
+
 func formatTime(_ min: Double) -> String {
     if min >= 60 {
         let h = Int(min / 60)

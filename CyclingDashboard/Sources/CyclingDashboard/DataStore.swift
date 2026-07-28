@@ -46,7 +46,8 @@ class DataStore {
     var processedURL: URL { projectRoot.appendingPathComponent("__processed__") }
 
     var routes: [String] {
-        Array(Set(rides.map { $0.route })).sorted()
+        let counts = Dictionary(grouping: rides, by: { $0.route }).mapValues(\.count)
+        return Set(rides.map { $0.route }).sorted { counts[$0, default: 0] > counts[$1, default: 0] }
     }
 
     var ridesByRoute: [String: [Ride]] {
@@ -255,10 +256,30 @@ class DataStore {
             let wasDismissed = isDismissed(lat: point.lat, lng: point.lng)
 
             if !alreadyExists && !wasDismissed {
-                let hint = "\(String(format: "%.4f", point.lat)),\(String(format: "%.4f", point.lng))"
-                addLocation(name: hint, lat: point.lat, lng: point.lng, isAuto: true)
+                let name = inferLocationName(lat: point.lat, lng: point.lng, radiusKm: AUTO_RADIUS_KM)
+                addLocation(name: name, lat: point.lat, lng: point.lng, isAuto: true)
             }
         }
+    }
+
+    func inferLocationName(lat: Double, lng: Double, radiusKm: Double) -> String {
+        var counts: [String: Int] = [:]
+        for ride in rides {
+            if let rl = ride.startLat, let rn = ride.startLng, haversineKm(lat1: lat, lng1: lng, lat2: rl, lng2: rn) < radiusKm {
+                if let m = ride.route.firstMatch(of: /^(.+?)→(.+)$/) {
+                    counts[String(m.1), default: 0] += 1
+                }
+            }
+            if let rl = ride.endLat, let rn = ride.endLng, haversineKm(lat1: lat, lng1: lng, lat2: rl, lng2: rn) < radiusKm {
+                if let m = ride.route.firstMatch(of: /^(.+?)→(.+)$/) {
+                    counts[String(m.2), default: 0] += 1
+                }
+            }
+        }
+        if let best = counts.max(by: { $0.value < $1.value }) {
+            return best.key
+        }
+        return "\(String(format: "%.4f", lat)),\(String(format: "%.4f", lng))"
     }
 
     func matchRouteByGPS(startLat: Double?, startLng: Double?, endLat: Double?, endLng: Double?, trackPoints: [TrackPoint], distanceKm: Double) -> (route: String, reversed: Bool)? {

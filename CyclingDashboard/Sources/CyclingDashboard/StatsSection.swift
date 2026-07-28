@@ -95,6 +95,8 @@ struct StatBox: View {
                 Text(value)
                     .font(.cardValue)
                     .foregroundStyle(AppTheme.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
                 if !unit.isEmpty {
                     Text(unit)
                         .font(.cardLabel)
