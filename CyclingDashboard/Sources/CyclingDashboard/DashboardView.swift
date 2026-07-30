@@ -11,6 +11,8 @@ struct DashboardView: View {
     @State private var showAllRides = false
     @State private var statsMonth: String? = nil
     @State private var mapStyle: MapStyleType = .standard
+    @State private var droppedFitFile: URL? = nil
+    @State private var isDropTargeted = false
 
     var selectedRides: [Ride] {
         if let route = selectedRoute {
@@ -79,6 +81,41 @@ struct DashboardView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let fitFile = urls.first(where: isFitFile) else { return false }
+            droppedFitFile = fitFile
+            showImport = true
+            return true
+        } isTargeted: { targeted in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isDropTargeted = targeted
+            }
+        }
+        .overlay {
+            if isDropTargeted {
+                ZStack {
+                    AppTheme.primary.opacity(0.12)
+                        .ignoresSafeArea()
+
+                    VStack(spacing: 10) {
+                        Image(systemName: "square.and.arrow.down")
+                            .font(.system(size: 34, weight: .semibold))
+                        Text("松开以导入 FIT 文件")
+                            .font(.sectionTitle)
+                    }
+                    .foregroundStyle(AppTheme.primary)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 22)
+                    .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(AppTheme.primary, style: StrokeStyle(lineWidth: 2, dash: [7]))
+                    }
+                }
+                .allowsHitTesting(false)
+                .transition(.opacity)
+            }
+        }
         .onAppear {
             applyAppearance()
             store.load()
@@ -104,7 +141,10 @@ struct DashboardView: View {
             selectProjectRoot()
         }
         .sheet(isPresented: $showImport) {
-            ImportView()
+            ImportView(initialFile: droppedFitFile)
+                .onDisappear {
+                    droppedFitFile = nil
+                }
         }
         .sheet(isPresented: $showAllRides) {
             RidesListSheet(rides: selectedRides, route: selectedRoute)
@@ -113,6 +153,10 @@ struct DashboardView: View {
 
     func applyAppearance() {
         NSApp?.appearance = NSAppearance(named: isDarkMode ? .darkAqua : .aqua)
+    }
+
+    func isFitFile(_ url: URL) -> Bool {
+        url.pathExtension.caseInsensitiveCompare("fit") == .orderedSame
     }
 
     func selectProjectRoot() {

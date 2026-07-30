@@ -6,6 +6,8 @@ struct ImportView: View {
     @Environment(DataStore.self) var store
     @Environment(\.dismiss) var dismiss
 
+    let initialFile: URL?
+
     @State private var selectedFile: URL? = nil
     @State private var parsed: ParsedRide? = nil
     @State private var isParsing = false
@@ -20,6 +22,11 @@ struct ImportView: View {
 
     @State private var matchedRoute: String? = nil
     @State private var isReversed = false
+    @State private var isDropTargeted = false
+
+    init(initialFile: URL? = nil) {
+        self.initialFile = initialFile
+    }
 
     var routeName: String {
         if let m = matchedRoute { return m }
@@ -99,6 +106,40 @@ struct ImportView: View {
         .padding()
         .frame(width: 520, height: matchedRoute != nil ? 260 : 400)
         .background(AppTheme.background.ignoresSafeArea())
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let fitFile = urls.first(where: isFitFile) else { return false }
+            parseFile(fitFile)
+            return true
+        } isTargeted: { targeted in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isDropTargeted = targeted
+            }
+        }
+        .overlay {
+            if isDropTargeted {
+                VStack(spacing: 8) {
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.system(size: 28, weight: .semibold))
+                    Text("松开以选择 FIT 文件")
+                        .font(.sectionTitle)
+                }
+                .foregroundStyle(AppTheme.primary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(.ultraThickMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(AppTheme.primary, style: StrokeStyle(lineWidth: 2, dash: [7]))
+                        .padding(8)
+                }
+                .allowsHitTesting(false)
+                .transition(.opacity)
+            }
+        }
+        .onAppear {
+            if let initialFile, selectedFile == nil {
+                parseFile(initialFile)
+            }
+        }
     }
 
     func rideSummary(_ p: ParsedRide) -> some View {
@@ -189,6 +230,10 @@ struct ImportView: View {
         panel.allowedContentTypes = [fitType]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        parseFile(url)
+    }
+
+    func parseFile(_ url: URL) {
         selectedFile = url
         isParsing = true
         errorMsg = ""
@@ -221,6 +266,10 @@ struct ImportView: View {
                 }
             }
         }
+    }
+
+    func isFitFile(_ url: URL) -> Bool {
+        url.pathExtension.caseInsensitiveCompare("fit") == .orderedSame
     }
 
     func confirmImport() {
