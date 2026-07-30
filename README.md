@@ -58,6 +58,17 @@ cd CyclingDashboard
 
 自动测试覆盖核心算法、旧版 JSON 兼容、圈数优先级、骑行排序及路线趋势数据。地图交互、FIT 导入、重命名、删除和分享仍需在发布前人工走查。
 
+## 打包 DMG
+
+```bash
+cd CyclingDashboard
+./package-dmg.sh
+```
+
+脚本会构建自带图标的 Release App，并覆盖生成最新的 `.build/CyclingDashboard-macOS.dmg`。
+
+当前工程是 Swift Package，Xcode 的 Archive 会将它视为可执行程序归档到 `Products/usr/local/bin`，不会自动生成标准 macOS App 或 DMG。日常开发仍可使用 Xcode；发布时使用上述脚本。
+
 ## 项目结构
 
 ```
