@@ -20,6 +20,7 @@ func haversineKm(lat1: Double, lng1: Double, lat2: Double, lng2: Double) -> Doub
 
 // 在 segment 范围内数圈: 以 segment 起点为圆心, 阈值按段内最大距离自适应 + 滞回防抖
 func countLapsInSegment(_ pts: [TrackPoint], startIdx: Int, endIdx: Int) -> Int {
+    guard startIdx >= 0, endIdx < pts.count, startIdx < endIdx else { return 0 }
     guard endIdx - startIdx >= 20 else { return 1 }
     let s = pts[startIdx]
     var maxD = 0.0
@@ -101,6 +102,7 @@ func isLightColor(hex: String) -> Bool {
 }
 
 func sampleTrackPoints(_ pts: [TrackPoint], target: Int = 120) -> [TrackPoint] {
+    guard target > 0 else { return [] }
     guard pts.count > target else { return pts }
     let step = max(1, pts.count / target)
     var out: [TrackPoint] = []
@@ -111,6 +113,7 @@ func sampleTrackPoints(_ pts: [TrackPoint], target: Int = 120) -> [TrackPoint] {
 }
 
 func cumulativeDistances(_ pts: [TrackPoint]) -> [Double] {
+    guard !pts.isEmpty else { return [] }
     var dists: [Double] = [0]
     for i in 1..<pts.count {
         let d = haversineKm(CLLocationCoordinate2D(latitude: pts[i - 1].lat, longitude: pts[i - 1].lng),
@@ -121,8 +124,11 @@ func cumulativeDistances(_ pts: [TrackPoint]) -> [Double] {
 }
 
 func locationHint(lat: Double, lng: Double, knownLocations: [Location]) async -> String? {
-    let nearby = knownLocations.filter { haversineKm(lat1: $0.lat, lng1: $0.lng, lat2: lat, lng2: lng) < $0.radiusKm }.first
-    if nearby != nil { return nearby!.name }
+    if let nearby = knownLocations.first(where: {
+        haversineKm(lat1: $0.lat, lng1: $0.lng, lat2: lat, lng2: lng) < $0.radiusKm
+    }) {
+        return nearby.name
+    }
     let loc = CLLocation(latitude: lat, longitude: lng)
     do {
         let placemarks = try await CLGeocoder().reverseGeocodeLocation(loc)
@@ -140,6 +146,8 @@ func locationHint(lat: Double, lng: Double, knownLocations: [Location]) async ->
 func lapsCount(for ride: Ride) -> Int {
     if ride.manualLaps > 0 { return ride.manualLaps }
     if let seg = ride.loopSegment, seg.laps > 1 { return seg.laps }
+    let recordedLaps = Int(ride.numLaps.rounded())
+    if recordedLaps > 1 { return recordedLaps }
     return 0
 }
 

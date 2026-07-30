@@ -5,6 +5,7 @@ struct DashboardView: View {
     @Environment(DataStore.self) var store
     @AppStorage("darkMode") private var isDarkMode = true
     @State private var selectedRoute: String? = nil
+    @State private var selectedRide: Ride? = nil
     @State private var camera: MapCameraPosition = .region(MKCoordinateRegion())
     @State private var showImport = false
     @State private var showAllRides = false
@@ -19,35 +20,65 @@ struct DashboardView: View {
     }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(spacing: 20) {
-                mapSection
-                StatsSection(rides: selectedRides, route: selectedRoute, month: $statsMonth)
-                MonthlyChartView(rides: selectedRides)
-                RouteCardsSection(selectedRoute: $selectedRoute)
-                RecentRidesSection(rides: selectedRides, route: selectedRoute, showAllRides: $showAllRides)
-            }
-            .padding(20)
-            .id(isDarkMode)
-        }
-        .background(AppTheme.background.ignoresSafeArea())
-        .preferredColorScheme(isDarkMode ? .dark : .light)
-        .navigationTitle("Cycling Dashboard")
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                routePicker
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button(action: { showImport = true }) {
-                    Label("导入", systemImage: "plus.circle.fill")
+        NavigationSplitView {
+            SidebarView(selectedRoute: $selectedRoute)
+        } detail: {
+            if let ride = selectedRide {
+                NavigationStack {
+                    RideDetailView(
+                        ride: ride,
+                        onDelete: {
+                            selectedRide = nil
+                            if let route = selectedRoute,
+                               store.ridesByRoute[route]?.isEmpty != false {
+                                selectedRoute = nil
+                            }
+                        },
+                        onRouteRenamed: { oldRoute, newRoute in
+                            selectedRide?.route = newRoute
+                            if selectedRoute == oldRoute {
+                                selectedRoute = newRoute
+                            }
+                        }
+                    )
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("← 返回") { selectedRide = nil }
+                            }
+                        }
+                }
+            } else {
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 20) {
+                        mapSection
+                        StatsSection(rides: selectedRides, route: selectedRoute, month: $statsMonth)
+                        if selectedRoute != nil {
+                            RouteTrendChart(rides: selectedRides)
+                        } else {
+                            MonthlyChartView(rides: selectedRides)
+                        }
+                        RecentRidesSection(rides: selectedRides, route: selectedRoute, showAllRides: $showAllRides, selectedRide: $selectedRide)
+                    }
+                    .padding(20)
+                    .id(isDarkMode)
+                }
+                .background(AppTheme.background.ignoresSafeArea())
+                .preferredColorScheme(isDarkMode ? .dark : .light)
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(action: { showImport = true }) {
+                            Label("导入", systemImage: "plus.circle.fill")
+                        }
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(action: { isDarkMode.toggle() }) {
+                            Label("外观", systemImage: isDarkMode ? "moon.fill" : "sun.max.fill")
+                        }
+                    }
                 }
             }
-            ToolbarItem(placement: .primaryAction) {
-                Button(action: { isDarkMode.toggle() }) {
-                    Label("外观", systemImage: isDarkMode ? "moon.fill" : "sun.max.fill")
-                }
-            }
         }
+        .navigationSplitViewStyle(.balanced)
         .onAppear {
             applyAppearance()
             store.load()
@@ -56,6 +87,9 @@ struct DashboardView: View {
         .onChange(of: isDarkMode) { _, _ in applyAppearance() }
         .onChange(of: selectedRoute) { _, new in
             statsMonth = nil
+            if selectedRide?.route != new {
+                selectedRide = nil
+            }
             withAnimation(.easeInOut(duration: 0.4)) {
                 camera = cameraPosition(for: new, store: store)
             }
@@ -117,44 +151,11 @@ struct DashboardView: View {
     }
 
     var mapTitle: String {
-        selectedRoute ?? "全部路线"
+        guard let selectedRoute else { return "全部路线" }
+        return selectedRoute.isEmpty ? "未命名" : selectedRoute
     }
 
     var mapSubtitle: String {
         "\(selectedRides.count) 次骑行 · \(String(format: "%.1f", selectedRides.reduce(0) { $0 + $1.distanceKm })) km"
-    }
-
-    var routePicker: some View {
-        Menu {
-            Button("全部路线") {
-                selectedRoute = nil
-            }
-            Divider()
-            ForEach(store.routes, id: \.self) { route in
-                Button(route) {
-                    selectedRoute = route
-                }
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "map")
-                    .foregroundStyle(AppTheme.primary)
-                Text(selectedRoute ?? "全部路线")
-                    .fontWeight(.semibold)
-                    .foregroundStyle(AppTheme.text)
-                Image(systemName: "chevron.down")
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.textMuted)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .background(AppTheme.surface)
-            .clipShape(Capsule())
-            .overlay(
-                Capsule()
-                    .stroke(AppTheme.border, lineWidth: 1)
-            )
-        }
-        .menuStyle(.button)
     }
 }

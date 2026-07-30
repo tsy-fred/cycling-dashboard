@@ -96,6 +96,7 @@ struct MapView: View {
             }
             .mapStyle(resolvedStyle)
             .saturation(mapStyle == .muted ? 0 : 1)
+            .scrollDisabled(true)
             .mapControls {
                 MapPitchToggle()
                 MapCompass()
@@ -172,7 +173,7 @@ struct MapView: View {
                     Button("取消") { showRadiusSheet = false }
                     Button("确认") {
                         store.updateLocationRadius(id: radiusId, radiusKm: radiusKm)
-                        showRenameSheet = false
+                        showRadiusSheet = false
                     }
                     .buttonStyle(.borderedProminent)
                 }

@@ -40,12 +40,32 @@ cd CyclingDashboard
 
 也可用 Xcode 直接打开 `Package.swift`，Cmd+R 增量编译 + SwiftUI Preview。
 
+## 开发与测试
+
+日常修改后运行一次完整验收：
+
+```bash
+cd CyclingDashboard
+./verify-app.sh
+```
+
+这个命令会先运行自动测试，再生成调试版 `.build/debug/CyclingDashboard.app`。
+
+在 Xcode 中：
+
+- `Cmd+U`：运行全部自动测试
+- `Cmd+R`：编译并启动应用，进行界面验收
+
+自动测试覆盖核心算法、旧版 JSON 兼容、圈数优先级、骑行排序及路线趋势数据。地图交互、FIT 导入、重命名、删除和分享仍需在发布前人工走查。
+
 ## 项目结构
 
 ```
 cycling-dashboard/
 ├── CyclingDashboard/        #   macOS 应用主工程
 │   ├── Package.swift
+│   ├── Tests/                 # XCTest 自动测试
+│   ├── verify-app.sh          # 自动测试 + 调试构建
 │   ├── Sources/
 │   │   └── CyclingDashboard/
 │   │       ├── App.swift            # 入口 + 菜单栏 + 快捷键

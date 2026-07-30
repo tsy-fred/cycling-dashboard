@@ -3,7 +3,7 @@ import SwiftUI
 import MapKit
 
 @Observable
-class DataStore {
+final class DataStore {
     var rides: [Ride] = []
     var locations: [Location] = []
     var routeColors: [String: String] = [:]
@@ -47,7 +47,12 @@ class DataStore {
 
     var routes: [String] {
         let counts = Dictionary(grouping: rides, by: { $0.route }).mapValues(\.count)
-        return Set(rides.map { $0.route }).sorted { counts[$0, default: 0] > counts[$1, default: 0] }
+        return Set(rides.map(\.route)).sorted {
+            let leftCount = counts[$0, default: 0]
+            let rightCount = counts[$1, default: 0]
+            if leftCount == rightCount { return $0 < $1 }
+            return leftCount > rightCount
+        }
     }
 
     var ridesByRoute: [String: [Ride]] {
@@ -67,6 +72,8 @@ class DataStore {
             let data = try Data(contentsOf: ridesURL)
             let decoded = try JSONDecoder().decode(RidesData.self, from: data)
             rides = decoded.records
+            routeColors = decoded.routeColors
+            routeOrder = decoded.routeOrder
             rebuildCoordsCache()
         } catch {
             print("load rides failed: \(error)")

@@ -10,6 +10,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "CyclingDashboard"
+        ),
+        .testTarget(
+            name: "CyclingDashboardTests",
+            dependencies: ["CyclingDashboard"]
         )
     ]
 )

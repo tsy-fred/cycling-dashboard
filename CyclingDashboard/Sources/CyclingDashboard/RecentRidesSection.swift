@@ -4,7 +4,7 @@ struct RecentRidesSection: View {
     var rides: [Ride]
     var route: String?
     @Binding var showAllRides: Bool
-    @State private var selectedRide: Ride? = nil
+    @Binding var selectedRide: Ride?
 
     var recentRides: [Ride] {
         Array(rides.sorted { $0.date > $1.date }.prefix(5))
@@ -35,9 +35,6 @@ struct RecentRidesSection: View {
                     .buttonStyle(.plain)
                 }
             }
-        }
-        .sheet(item: $selectedRide) { ride in
-            RideDetailSheet(ride: ride)
         }
     }
 }
@@ -103,6 +100,25 @@ enum RideSortKey: String, CaseIterable {
     case elev = "爬升"
 }
 
+func sortRides(_ rides: [Ride], by key: RideSortKey, ascending: Bool) -> [Ride] {
+    rides.sorted { a, b in
+        switch key {
+        case .date:
+            if a.date == b.date { return a.id < b.id }
+            return ascending ? a.date < b.date : a.date > b.date
+        case .distance:
+            if a.distanceKm == b.distanceKm { return a.id < b.id }
+            return ascending ? a.distanceKm < b.distanceKm : a.distanceKm > b.distanceKm
+        case .speed:
+            if a.avgSpeedKmh == b.avgSpeedKmh { return a.id < b.id }
+            return ascending ? a.avgSpeedKmh < b.avgSpeedKmh : a.avgSpeedKmh > b.avgSpeedKmh
+        case .elev:
+            if a.elevGainM == b.elevGainM { return a.id < b.id }
+            return ascending ? a.elevGainM < b.elevGainM : a.elevGainM > b.elevGainM
+        }
+    }
+}
+
 struct RidesListSheet: View {
     var rides: [Ride]
     var route: String?
@@ -111,16 +127,7 @@ struct RidesListSheet: View {
     @State private var sortAsc = false
 
     var sortedRides: [Ride] {
-        rides.sorted { a, b in
-            let less: Bool
-            switch sortKey {
-            case .date: less = a.date < b.date
-            case .distance: less = a.distanceKm < b.distanceKm
-            case .speed: less = a.avgSpeedKmh < b.avgSpeedKmh
-            case .elev: less = a.elevGainM < b.elevGainM
-            }
-            return sortAsc ? less : !less
-        }
+        sortRides(rides, by: sortKey, ascending: sortAsc)
     }
 
     var body: some View {

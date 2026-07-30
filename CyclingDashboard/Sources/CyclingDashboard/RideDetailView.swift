@@ -3,6 +3,8 @@ import SwiftUI
 struct RideDetailView: View {
     @Environment(DataStore.self) var store
     @State var ride: Ride
+    var onDelete: (() -> Void)?
+    var onRouteRenamed: ((_ oldRoute: String, _ newRoute: String) -> Void)?
     @Environment(\.dismiss) var dismiss
     @State private var showShare = false
     @State private var showDeleteConfirm = false
@@ -69,15 +71,21 @@ struct RideDetailView: View {
             Button("保存") {
                 let name = newRouteName.trimmingCharacters(in: .whitespaces)
                 guard !name.isEmpty else { return }
+                let oldRoute = ride.route
                 store.updateRideRoute(id: ride.id, route: name)
                 ride.route = name
+                onRouteRenamed?(oldRoute, name)
             }
         }
         .alert("删除这条骑行？", isPresented: $showDeleteConfirm) {
             Button("取消", role: .cancel) {}
             Button("删除", role: .destructive) {
                 store.deleteRide(id: ride.id)
-                dismiss()
+                if let onDelete {
+                    onDelete()
+                } else {
+                    dismiss()
+                }
             }
         } message: {
             Text("\(ride.date) · \(ride.route.isEmpty ? "未命名" : ride.route)，将从 rides.json 移除")
@@ -178,5 +186,4 @@ struct RideDetailView: View {
         }
     }
 }
-
 

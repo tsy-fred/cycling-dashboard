@@ -37,6 +37,7 @@ struct RideMapView: View {
             }
         }
         .mapStyle(.standard(elevation: .flat))
+        .scrollDisabled(true)
         .mapControls {
             MapPitchToggle()
             MapCompass()
